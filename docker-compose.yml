@@ -1,0 +1,82 @@
+version: '3.9'
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: aumo-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: aumo
+    networks:
+      - aumo-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: aumo-backend
+    ports:
+      - "5000:5000"
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/aumo
+      - JWT_SECRET=aumo-jwt-secret-key-change-in-production
+      - JWT_REFRESH_SECRET=aumo-jwt-refresh-secret-key-change-in-production
+      - AI_SERVICE_URL=http://ai-service:8000
+      - OSRM_URL=http://osrm-backend:5001
+      - SMTP_HOST=smtp.gmail.com
+      - SMTP_PORT=587
+      - SMTP_USER=noreply@aumo.app
+      - SMTP_PASS=changeme
+      - ADMIN_EMAIL=admin@aumo.app
+      - ADMIN_PASSWORD=Admin123!
+      - PORT=5000
+      - NODE_ENV=production
+    depends_on:
+      - mongodb
+      - ai-service
+    networks:
+      - aumo-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: aumo-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:5000
+      - NEXT_PUBLIC_SOCKET_URL=http://localhost:5000
+      - NEXT_PUBLIC_OSRM_URL=http://localhost:5001
+    depends_on:
+      - backend
+    networks:
+      - aumo-network
+
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: aumo-ai-service
+    ports:
+      - "8000:8000"
+    environment:
+      - OSRM_URL=http://osrm-backend:5001
+      - OSM_BBOX=12.85,77.45,13.15,77.75
+      - MODEL_PATH=saved_models/traffic_lstm.pt
+      - API_KEY=aumo-ai-api-key-change-in-production
+    volumes:
+      - ai-models:/app/saved_models
+    networks:
+      - aumo-network
+
+volumes:
+  mongo-data:
+  ai-models:
+
+networks:
+  aumo-network:
+    driver: bridge

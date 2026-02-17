@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@layer base {
+  :root {
+    --background: 255 255 255;
+    --foreground: 15 23 42;
+    --card: 248 250 252;
+    --border: 226 232 240;
+    --muted: 100 116 139;
+  }
+  .dark {
+    --background: 15 23 42;
+    --foreground: 248 250 252;
+    --card: 30 41 59;
+    --border: 51 65 85;
+    --muted: 148 163 184;
+  }
+  * {
+    @apply border-slate-200 dark:border-slate-700;
+  }
+  body {
+    @apply bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-50 antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-xl bg-primary-500 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-6 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 disabled:opacity-50;
+  }
+  .btn-danger {
+    @apply inline-flex items-center justify-center rounded-xl bg-red-500 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-red-600 disabled:opacity-50;
+  }
+  .input-field {
+    @apply w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500;
+  }
+  .card {
+    @apply rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800;
+  }
+  .glass-card {
+    @apply rounded-2xl border border-white/20 bg-white/80 p-6 shadow-lg backdrop-blur-xl dark:border-slate-700/30 dark:bg-slate-800/80;
+  }
+}
+
+/* Leaflet overrides for dark mode */
+.dark .leaflet-tile-pane {
+  filter: brightness(0.8);
+}
+.leaflet-container {
+  z-index: 0;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-slate-300 dark:bg-slate-600;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-400 dark:bg-slate-500;
+}
