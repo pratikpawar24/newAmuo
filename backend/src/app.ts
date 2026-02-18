@@ -68,6 +68,27 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
+// ─── Initial Seed (public, only works on empty DB) ─────────────────────────
+app.post('/api/init/seed', async (_req, res) => {
+  try {
+    const { User } = await import('./models/User');
+    const count = await User.countDocuments();
+    if (count > 0) {
+      res.status(403).json({
+        success: false,
+        error: 'Database already has users. Seed is disabled.',
+      });
+      return;
+    }
+    const { seedDatabase } = await import('./utils/seedData');
+    await seedDatabase();
+    res.json({ success: true, message: 'Demo data seeded successfully. Admin: admin@aumo.io / Admin@1234' });
+  } catch (error) {
+    console.error('Init seed error:', error);
+    res.status(500).json({ success: false, error: 'Failed to seed data' });
+  }
+});
+
 // ─── API Routes ─────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/rides', rideRoutes);

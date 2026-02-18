@@ -12,7 +12,7 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 
 const schema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters'),
+  fullName: z.string().min(2, 'Name must be at least 2 characters'),
   email: z.string().email('Invalid email'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   confirmPassword: z.string(),
@@ -35,7 +35,7 @@ export default function RegisterPage() {
   const onSubmit = async (data: FormData) => {
     setIsSubmitting(true);
     try {
-      await registerUser({ name: data.name, email: data.email, password: data.password });
+      await registerUser({ fullName: data.fullName, email: data.email, password: data.password });
       toast.success('Account created!');
       router.push('/');
     } catch (error: unknown) {
@@ -56,7 +56,7 @@ export default function RegisterPage() {
 
         <div className="card">
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <Input label="Full Name" placeholder="John Doe" error={errors.name?.message} {...register('name')} />
+            <Input label="Full Name" placeholder="John Doe" error={errors.fullName?.message} {...register('fullName')} />
             <Input label="Email" type="email" placeholder="you@example.com" error={errors.email?.message} {...register('email')} />
             <Input label="Password" type="password" placeholder="••••••••" error={errors.password?.message} {...register('password')} />
             <Input label="Confirm Password" type="password" placeholder="••••••••" error={errors.confirmPassword?.message} {...register('confirmPassword')} />

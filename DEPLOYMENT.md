@@ -259,9 +259,9 @@ NEXT_PUBLIC_API_URL=https://aumo-api.onrender.com
 # Socket.IO URL (same as API)
 NEXT_PUBLIC_SOCKET_URL=https://aumo-api.onrender.com
 
-# Map defaults (Bangalore, India)
-NEXT_PUBLIC_DEFAULT_LAT=12.9716
-NEXT_PUBLIC_DEFAULT_LNG=77.5946
+# Map defaults (Pune, India)
+NEXT_PUBLIC_DEFAULT_LAT=18.5204
+NEXT_PUBLIC_DEFAULT_LNG=73.8567
 NEXT_PUBLIC_DEFAULT_ZOOM=12
 
 # Feature flags
@@ -388,8 +388,8 @@ Socket connected: true
 |----------|---------------|
 | `NEXT_PUBLIC_API_URL` | `https://aumo-api.onrender.com` |
 | `NEXT_PUBLIC_SOCKET_URL` | `https://aumo-api.onrender.com` |
-| `NEXT_PUBLIC_DEFAULT_LAT` | `12.9716` |
-| `NEXT_PUBLIC_DEFAULT_LNG` | `77.5946` |
+| `NEXT_PUBLIC_DEFAULT_LAT` | `18.5204` |
+| `NEXT_PUBLIC_DEFAULT_LNG` | `73.8567` |
 
 ### Backend (Render)
 | Variable | Example Value |

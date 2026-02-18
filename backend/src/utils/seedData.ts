@@ -13,17 +13,17 @@ const DEMO_USERS = [
   { name: 'Admin User', email: 'admin@aumo.io', password: 'Admin@1234', role: 'admin' as const, greenScore: 50 },
 ];
 
-const MUMBAI_LOCATIONS = [
-  { name: 'Andheri Station', lat: 19.1197, lng: 72.8464 },
-  { name: 'Bandra Kurla Complex', lat: 19.0596, lng: 72.8656 },
-  { name: 'Powai Lake', lat: 19.1254, lng: 72.9070 },
-  { name: 'Dadar Station', lat: 19.0186, lng: 72.8427 },
-  { name: 'Churchgate', lat: 18.9322, lng: 72.8264 },
-  { name: 'Juhu Beach', lat: 19.0987, lng: 72.8264 },
-  { name: 'Worli Sea Face', lat: 19.0003, lng: 72.8153 },
-  { name: 'Malad Station', lat: 19.1871, lng: 72.8485 },
-  { name: 'Thane Station', lat: 19.1860, lng: 72.9757 },
-  { name: 'Goregaon Station', lat: 19.1649, lng: 72.8494 },
+const PUNE_LOCATIONS = [
+  { name: 'Shivajinagar', lat: 18.5308, lng: 73.8475 },
+  { name: 'Hinjewadi IT Park', lat: 18.5912, lng: 73.7380 },
+  { name: 'Koregaon Park', lat: 18.5362, lng: 73.8938 },
+  { name: 'Kothrud', lat: 18.5074, lng: 73.8077 },
+  { name: 'Viman Nagar', lat: 18.5679, lng: 73.9143 },
+  { name: 'Deccan Gymkhana', lat: 18.5176, lng: 73.8414 },
+  { name: 'Baner', lat: 18.5590, lng: 73.7868 },
+  { name: 'Swargate', lat: 18.5018, lng: 73.8636 },
+  { name: 'Wakad', lat: 18.5981, lng: 73.7630 },
+  { name: 'Magarpatta City', lat: 18.5141, lng: 73.9267 },
 ];
 
 export async function seedDatabase(): Promise<void> {
@@ -42,7 +42,7 @@ export async function seedDatabase(): Promise<void> {
 
   const userDocs = await User.insertMany(
     DEMO_USERS.map((u) => ({
-      name: u.name,
+      fullName: u.name,
       email: u.email,
       password: u.role === 'admin' ? adminPassword : hashedPassword,
       role: u.role,
@@ -73,8 +73,8 @@ export async function seedDatabase(): Promise<void> {
 
   for (let i = 0; i < 15; i++) {
     const driver = regularUsers[i % regularUsers.length];
-    const origin = MUMBAI_LOCATIONS[Math.floor(Math.random() * MUMBAI_LOCATIONS.length)];
-    let dest = MUMBAI_LOCATIONS[Math.floor(Math.random() * MUMBAI_LOCATIONS.length)];
+    const origin = PUNE_LOCATIONS[Math.floor(Math.random() * PUNE_LOCATIONS.length)];
+    let dest = PUNE_LOCATIONS[Math.floor(Math.random() * PUNE_LOCATIONS.length)];
     while (dest.name === origin.name) {
       dest = MUMBAI_LOCATIONS[Math.floor(Math.random() * MUMBAI_LOCATIONS.length)];
     }
@@ -98,7 +98,7 @@ export async function seedDatabase(): Promise<void> {
       vehicleInfo: {
         model: ['Maruti Swift', 'Hyundai i20', 'Honda City', 'Tata Nexon'][Math.floor(Math.random() * 4)],
         color: ['White', 'Silver', 'Black', 'Blue'][Math.floor(Math.random() * 4)],
-        plateNumber: `MH${Math.floor(Math.random() * 50)}-${String.fromCharCode(65 + Math.floor(Math.random() * 26))}${String.fromCharCode(65 + Math.floor(Math.random() * 26))}-${Math.floor(1000 + Math.random() * 9000)}`,
+        plateNumber: `MH12-${String.fromCharCode(65 + Math.floor(Math.random() * 26))}${String.fromCharCode(65 + Math.floor(Math.random() * 26))}-${Math.floor(1000 + Math.random() * 9000)}`,
       },
       distanceKm,
       estimatedDuration: Math.round(distanceKm * 3 + 10),

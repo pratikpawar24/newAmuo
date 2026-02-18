@@ -43,9 +43,10 @@ export interface LoginPayload {
 }
 
 export interface RegisterPayload {
-  name: string;
+  fullName: string;
   email: string;
   password: string;
+  phone?: string;
 }
 
 export interface LeaderboardEntry extends Pick<User, '_id' | 'name' | 'avatar' | 'greenScore' | 'badges'> {

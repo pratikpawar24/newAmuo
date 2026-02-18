@@ -17,6 +17,10 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+const IS_PROD = process.env.NODE_ENV === 'production';
+const COOKIE_OPTS_ACCESS = { httpOnly: true, secure: IS_PROD, maxAge: 15 * 60 * 1000, sameSite: (IS_PROD ? 'none' : 'lax') as 'none' | 'lax' };
+const COOKIE_OPTS_REFRESH = { httpOnly: true, secure: IS_PROD, maxAge: 7 * 24 * 60 * 60 * 1000, sameSite: (IS_PROD ? 'none' : 'lax') as 'none' | 'lax' };
+
 export async function register(req: Request, res: Response): Promise<void> {
   try {
     const parsed = registerSchema.safeParse(req.body);
@@ -45,8 +49,8 @@ export async function register(req: Request, res: Response): Promise<void> {
     user.refreshTokens.push(refreshToken);
     await user.save();
 
-    res.cookie('accessToken', accessToken, { httpOnly: true, secure: false, maxAge: 15 * 60 * 1000, sameSite: 'lax' });
-    res.cookie('refreshToken', refreshToken, { httpOnly: true, secure: false, maxAge: 7 * 24 * 60 * 60 * 1000, sameSite: 'lax' });
+    res.cookie('accessToken', accessToken, COOKIE_OPTS_ACCESS);
+    res.cookie('refreshToken', refreshToken, COOKIE_OPTS_REFRESH);
 
     res.status(201).json({
       success: true,
@@ -91,8 +95,8 @@ export async function login(req: Request, res: Response): Promise<void> {
     if (user.refreshTokens.length > 5) user.refreshTokens = user.refreshTokens.slice(-5);
     await user.save();
 
-    res.cookie('accessToken', accessToken, { httpOnly: true, secure: false, maxAge: 15 * 60 * 1000, sameSite: 'lax' });
-    res.cookie('refreshToken', refreshToken, { httpOnly: true, secure: false, maxAge: 7 * 24 * 60 * 60 * 1000, sameSite: 'lax' });
+    res.cookie('accessToken', accessToken, COOKIE_OPTS_ACCESS);
+    res.cookie('refreshToken', refreshToken, COOKIE_OPTS_REFRESH);
 
     res.json({
       success: true,
@@ -131,8 +135,8 @@ export async function refreshToken(req: Request, res: Response): Promise<void> {
     user.refreshTokens.push(newRefreshToken);
     await user.save();
 
-    res.cookie('accessToken', newAccessToken, { httpOnly: true, secure: false, maxAge: 15 * 60 * 1000, sameSite: 'lax' });
-    res.cookie('refreshToken', newRefreshToken, { httpOnly: true, secure: false, maxAge: 7 * 24 * 60 * 60 * 1000, sameSite: 'lax' });
+    res.cookie('accessToken', newAccessToken, COOKIE_OPTS_ACCESS);
+    res.cookie('refreshToken', newRefreshToken, COOKIE_OPTS_REFRESH);
 
     res.json({ success: true, data: { accessToken: newAccessToken, refreshToken: newRefreshToken } });
   } catch {
