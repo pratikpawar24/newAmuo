@@ -18,6 +18,10 @@ from utils.haversine import haversine
 from config import graph_config
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+OVERPASS_FALLBACK_URLS = [
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+]
 
 # Default speed limits by road type (km/h)
 ROAD_SPEED_LIMITS: Dict[str, float] = {
@@ -72,16 +76,26 @@ def build_overpass_query(bbox: Tuple[float, float, float, float]) -> str:
 
 
 async def fetch_osm_data(bbox: Tuple[float, float, float, float]) -> Dict[str, Any]:
-    """Fetch road data from Overpass API."""
+    """Fetch road data from Overpass API with fallback servers."""
     query = build_overpass_query(bbox)
-    try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(OVERPASS_URL, data={"data": query})
-            response.raise_for_status()
-            return response.json()
-    except Exception as e:
-        print(f"[GraphBuilder] Overpass API error: {e}")
-        return {"elements": []}
+    all_urls = [OVERPASS_URL] + OVERPASS_FALLBACK_URLS
+
+    for url in all_urls:
+        try:
+            print(f"[GraphBuilder] Trying Overpass server: {url}")
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                response = await client.post(url, data={"data": query})
+                response.raise_for_status()
+                data = response.json()
+                if data.get("elements"):
+                    print(f"[GraphBuilder] Got {len(data['elements'])} elements from {url}")
+                    return data
+                print(f"[GraphBuilder] Empty response from {url}, trying next...")
+        except Exception as e:
+            print(f"[GraphBuilder] Overpass API error ({url}): {e}")
+
+    print("[GraphBuilder] All Overpass servers failed")
+    return {"elements": []}
 
 
 def parse_speed_limit(tags: Dict[str, str], highway_type: str) -> float:
