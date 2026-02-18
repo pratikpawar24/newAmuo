@@ -73,3 +73,69 @@ export async function healthCheck() {
     return { status: 'unhealthy' };
   }
 }
+
+// ── AUMO-ORION Advanced AI Service Functions ──────────────────────────────────
+
+export async function getParetoRoutes(
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number },
+  departureTime: string
+) {
+  try {
+    const { data } = await aiClient.post('/api/route/pareto', {
+      origin,
+      destination,
+      departureTime,
+    });
+    return data;
+  } catch (error: unknown) {
+    logger.error('AI pareto routes error:', error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+
+export async function replanRoute(
+  rideId: string,
+  currentPosition: { lat: number; lng: number },
+  destination: { lat: number; lng: number },
+  departureTime: string,
+  weights = { alpha: 0.5, beta: 0.35, gamma: 0.15 },
+  trafficChangePct = 0.0,
+  isOffRoute = false,
+  incidentOnRoute = false
+) {
+  try {
+    const { data } = await aiClient.post('/api/route/replan', {
+      rideId,
+      currentPosition,
+      destination,
+      departureTime,
+      weights,
+      trafficChangePct,
+      isOffRoute,
+      incidentOnRoute,
+    });
+    return data;
+  } catch (error: unknown) {
+    logger.error('AI replan error:', error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+
+export async function predictTrafficAdvanced(
+  segments: Array<{ segmentId: string; lat: number; lng: number }>,
+  timestamp: string,
+  useStGat = true
+) {
+  try {
+    const { data } = await aiClient.post('/api/predict-traffic-advanced', {
+      segments,
+      timestamp,
+      useStGat,
+    });
+    return data;
+  } catch (error: unknown) {
+    logger.error('AI advanced predict error:', error instanceof Error ? error.message : error);
+    return { predictions: [], model: 'fallback' };
+  }
+}

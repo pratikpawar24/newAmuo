@@ -231,6 +231,72 @@ export function initSocket(httpServer: HTTPServer): Server {
       socket.leave(`traffic:${region}`);
     });
 
+    // ─── AUMO-ORION Re-Routing Events ────────────────────────────────────
+
+    socket.on('route:subscribe', (data: { rideId: string }) => {
+      socket.join(`route:${data.rideId}`);
+      logger.debug(`User ${socket.userId} subscribed to route updates for ride ${data.rideId}`);
+    });
+
+    socket.on('route:unsubscribe', (data: { rideId: string }) => {
+      socket.leave(`route:${data.rideId}`);
+    });
+
+    socket.on('route:replan_request', async (data: {
+      rideId: string;
+      currentPosition: { lat: number; lng: number };
+      destination: { lat: number; lng: number };
+      departureTime: string;
+      weights?: { alpha: number; beta: number; gamma: number };
+      trafficChangePct?: number;
+      isOffRoute?: boolean;
+      incidentOnRoute?: boolean;
+    }) => {
+      try {
+        // Notify room that re-planning is in progress
+        io.to(`route:${data.rideId}`).emit('route:replan_status', {
+          rideId: data.rideId,
+          status: 'computing',
+          message: 'ORION is computing a better route...',
+        });
+
+        // Call the AI replan service
+        const { replanRoute } = await import('../services/ai.service');
+        const result = await replanRoute(
+          data.rideId,
+          data.currentPosition,
+          data.destination,
+          data.departureTime,
+          data.weights || { alpha: 0.5, beta: 0.3, gamma: 0.15 },
+          data.trafficChangePct || 0,
+          data.isOffRoute || false,
+          data.incidentOnRoute || false,
+        );
+
+        if (result?.replanned) {
+          io.to(`route:${data.rideId}`).emit('route:updated', {
+            rideId: data.rideId,
+            route: result.route,
+            status: result.status,
+            reason: 'Re-planned due to traffic changes',
+          });
+        } else {
+          io.to(`route:${data.rideId}`).emit('route:replan_status', {
+            rideId: data.rideId,
+            status: 'no_change',
+            message: result?.reason || 'Current route is still optimal',
+          });
+        }
+      } catch (error) {
+        logger.error('Route replan socket error:', error);
+        socket.emit('route:replan_status', {
+          rideId: data.rideId,
+          status: 'error',
+          message: 'Failed to re-plan route',
+        });
+      }
+    });
+
     // ─── Disconnect ─────────────────────────────────────────────────────
 
     socket.on('disconnect', (reason: string) => {
@@ -262,4 +328,8 @@ export function emitToRide(rideId: string, event: string, data: unknown): void {
 
 export function emitTrafficUpdate(region: string, data: unknown): void {
   io?.to(`traffic:${region}`).emit('traffic:update', data);
+}
+
+export function emitRouteUpdate(rideId: string, route: unknown, status: unknown): void {
+  io?.to(`route:${rideId}`).emit('route:updated', { rideId, route, status });
 }
