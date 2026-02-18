@@ -79,9 +79,21 @@ class SyntheticDataConfig:
     snow_speed_reduction: float = 0.30
 
 
+# Environment variables with defaults for local and production
 OSRM_URL = os.getenv("OSRM_URL", "http://localhost:5001")
 MODEL_PATH = os.getenv("MODEL_PATH", "saved_models/traffic_lstm.pt")
 API_KEY = os.getenv("API_KEY", "aumo-ai-api-key-change-in-production")
+
+# Hugging Face Spaces specific
+HF_SPACE = os.getenv("SPACE_ID", None)  # Set by HF Spaces automatically
+IS_HF_SPACE = HF_SPACE is not None
+PORT = int(os.getenv("PORT", "7860" if IS_HF_SPACE else "8000"))
+
+# CORS origins for production
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5000").split(",")
+
+# Backend URL for callbacks (if needed)
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:5000")
 
 model_config = ModelConfig()
 graph_config = GraphConfig()

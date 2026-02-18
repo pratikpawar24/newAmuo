@@ -3,7 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import morgan from 'morgan';
-import { env } from './config/env';
+import { env, getCorsOrigins, isProduction } from './config/env';
 import { errorHandler } from './middleware/errorHandler';
 import { generalLimiter } from './middleware/rateLimiter';
 
@@ -17,11 +17,30 @@ import routeRoutes from './routes/route.routes';
 
 const app = express();
 
+// ─── Trust Proxy (for Render/Vercel) ────────────────────────────────────────
+if (isProduction) {
+  app.set('trust proxy', 1);
+}
+
 // ─── Security ───────────────────────────────────────────────────────────────
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+app.use(helmet({ 
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: isProduction ? undefined : false,
+}));
+
+const corsOrigins = getCorsOrigins();
 app.use(cors({
-  origin: env.CORS_ORIGIN?.split(',') || ['http://localhost:3000'],
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    if (corsOrigins.includes(origin) || corsOrigins.includes('*')) {
+      return callback(null, true);
+    }
+    callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 }));
 
 // ─── Body Parsing ───────────────────────────────────────────────────────────

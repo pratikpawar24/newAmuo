@@ -1,0 +1,33 @@
+# Render.com Configuration for AUMO Backend
+# https://render.com/docs/yaml-spec
+
+services:
+  - type: web
+    name: aumo-api
+    runtime: node
+    region: oregon
+    plan: free
+    branch: main
+    rootDir: backend
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: MONGODB_URI
+        sync: false  # Set this in Render Dashboard
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: AI_SERVICE_URL
+        sync: false  # Set this in Render Dashboard (your HF Space URL)
+      - key: CORS_ORIGIN
+        sync: false  # Set this in Render Dashboard (your Vercel URL)
+      - key: OSRM_URL
+        value: https://router.project-osrm.org
+      - key: AI_API_KEY
+        generateValue: true

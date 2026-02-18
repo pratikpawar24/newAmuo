@@ -106,9 +106,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Import CORS origins from config
+from config import CORS_ORIGINS, IS_HF_SPACE
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS if not IS_HF_SPACE else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -550,4 +553,12 @@ def haversine_km_simple(lat1: float, lng1: float, lat2: float, lng2: float) -> f
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    from config import PORT, IS_HF_SPACE
+    
+    # Use reload only in development
+    uvicorn.run(
+        "main:app", 
+        host="0.0.0.0", 
+        port=PORT, 
+        reload=not IS_HF_SPACE
+    )
