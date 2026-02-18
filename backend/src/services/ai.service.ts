@@ -4,7 +4,7 @@ import { logger } from '../utils/logger';
 
 const aiClient = axios.create({
   baseURL: env.AI_SERVICE_URL,
-  timeout: 30000,
+  timeout: 60000,
   headers: { 'Content-Type': 'application/json' },
 });
 

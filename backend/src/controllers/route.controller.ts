@@ -1,6 +1,31 @@
 import { Request, Response } from 'express';
+import axios from 'axios';
 import { calculateRoute, getParetoRoutes, replanRoute } from '../services/ai.service';
+import { env } from '../config/env';
+import { haversineKm } from '../utils/haversine';
 import { logger } from '../utils/logger';
+
+/** Direct OSRM fallback when AI service is unavailable */
+async function osrmFallback(originLat: number, originLng: number, destLat: number, destLng: number) {
+  const osrmUrl = env.OSRM_URL || 'https://router.project-osrm.org';
+  const coordStr = `${originLng},${originLat};${destLng},${destLat}`;
+  const url = `${osrmUrl}/route/v1/driving/${coordStr}?overview=full&geometries=geojson&steps=true`;
+  const { data } = await axios.get(url, { timeout: 15000 });
+  if (data?.routes?.[0]) {
+    const route = data.routes[0];
+    const polyline = route.geometry?.coordinates?.map((c: number[]) => [c[1], c[0]]) || [];
+    const distKm = route.distance / 1000;
+    const durMin = route.duration / 60;
+    const avgSpeed = distKm / (durMin / 60 || 1);
+    const co2Grams = distKm * (avgSpeed < 20 ? 220 : avgSpeed < 50 ? 170 : avgSpeed < 80 ? 150 : 180);
+    return {
+      primary: { polyline, distanceKm: Math.round(distKm * 100) / 100, durationMin: Math.round(durMin * 10) / 10, co2Grams: Math.round(co2Grams), cost: 0 },
+      alternative: null,
+      trafficOverlay: [],
+    };
+  }
+  return null;
+}
 
 export async function getRoute(req: Request, res: Response): Promise<void> {
   try {
@@ -32,7 +57,36 @@ export async function getRoute(req: Request, res: Response): Promise<void> {
       routeWeights,
     );
 
-    res.json({ success: true, data: result });
+    // If AI service returned a valid result, use it
+    if (result) {
+      res.json({ success: true, data: result });
+      return;
+    }
+
+    // Fallback to OSRM directly when AI is unavailable
+    logger.warn('AI route returned null, falling back to OSRM');
+    const fallback = await osrmFallback(origin.lat, origin.lng, destination.lat, destination.lng);
+    if (fallback) {
+      res.json({ success: true, data: fallback });
+      return;
+    }
+
+    // Absolute fallback — straight line
+    const dist = haversineKm(origin.lat, origin.lng, destination.lat, destination.lng);
+    res.json({
+      success: true,
+      data: {
+        primary: {
+          polyline: [[origin.lat, origin.lng], [destination.lat, destination.lng]],
+          distanceKm: Math.round(dist * 100) / 100,
+          durationMin: Math.round(dist / 30 * 60 * 10) / 10,
+          co2Grams: Math.round(dist * 170),
+          cost: 0,
+        },
+        alternative: null,
+        trafficOverlay: [],
+      },
+    });
   } catch (error) {
     logger.error('Route calculation error:', error);
     res.status(500).json({ success: false, error: 'Failed to calculate route' });
@@ -64,7 +118,10 @@ export async function getMultiRoute(req: Request, res: Response): Promise<void> 
             depTime || new Date().toISOString(),
             { alpha: preset.alpha, beta: preset.beta, gamma: preset.gamma },
           );
-          return { name: preset.name, ...result };
+          if (result) return { name: preset.name, ...result };
+          // Fallback to OSRM
+          const fb = await osrmFallback(origin.lat, origin.lng, destination.lat, destination.lng);
+          return fb ? { name: preset.name, ...fb } : { name: preset.name, error: 'Route unavailable' };
         } catch {
           return { name: preset.name, error: 'Route unavailable' };
         }

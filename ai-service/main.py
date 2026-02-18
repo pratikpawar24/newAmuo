@@ -85,26 +85,22 @@ async def lifespan(app: FastAPI):
     print("AUMO v2 AI Service Starting (AUMO-ORION Engine)")
     print("=" * 60)
 
-    # 1. Load/train LSTM model (fallback, fast startup)
+    # 1. Load LSTM model (skip training on startup — defer to /api/train)
     if os.path.exists(MODEL_PATH):
         print(f"[Startup] Loading existing LSTM model from {MODEL_PATH}")
         try:
             model, scaler = load_model(MODEL_PATH)
             model_metrics = {"status": "loaded", "path": MODEL_PATH}
         except Exception as e:
-            print(f"[Startup] Failed to load LSTM model: {e}, retraining...")
-            model, metrics = train_model()
-            scaler = metrics["scaler"]
-            model_metrics = metrics
+            print(f"[Startup] Failed to load LSTM model: {e}")
+            model_metrics = {"status": "not_loaded", "error": str(e)}
     else:
-        print("[Startup] No saved LSTM model found, training from scratch...")
-        model, metrics = train_model()
-        scaler = metrics["scaler"]
-        model_metrics = metrics
+        print("[Startup] No saved LSTM model found. Will train in background...")
+        model_metrics = {"status": "training_deferred"}
 
-    print(f"[Startup] LSTM Model ready. Metrics: {model_metrics}")
+    print(f"[Startup] LSTM status: {model_metrics.get('status', 'unknown')}")
 
-    # 2. Load/train ST-GAT model (advanced spatio-temporal)
+    # 2. Load ST-GAT model (if checkpoint exists)
     if os.path.exists(ST_GAT_MODEL_PATH):
         print(f"[Startup] Loading existing ST-GAT model from {ST_GAT_MODEL_PATH}")
         try:
@@ -142,11 +138,27 @@ async def lifespan(app: FastAPI):
 
     print("=" * 60)
     print("AUMO-ORION AI Service ready ✓")
-    print(f"  LSTM: {model_metrics.get('status', 'ready')}")
+    print(f"  LSTM: {model_metrics.get('status', 'unknown')}")
     print(f"  ST-GAT: {model_metrics.get('st_gat', 'not_available')}")
     print(f"  Graph: {road_graph.number_of_nodes()} nodes, {road_graph.number_of_edges()} edges")
     print(f"  CH: {model_metrics.get('contraction_hierarchies', 'unavailable')}")
     print("=" * 60)
+
+    # 5. Background train LSTM if no model loaded
+    if model is None:
+        async def _bg_train():
+            global model, scaler, model_metrics
+            try:
+                print("[Background] Starting LSTM training...")
+                loop = asyncio.get_event_loop()
+                m, metrics = await loop.run_in_executor(None, train_model)
+                model = m
+                scaler = metrics["scaler"]
+                model_metrics = {**model_metrics, "status": "trained", **metrics}
+                print("[Background] LSTM training complete ✓")
+            except Exception as e:
+                print(f"[Background] LSTM training failed: {e}")
+        asyncio.create_task(_bg_train())
 
     yield
 

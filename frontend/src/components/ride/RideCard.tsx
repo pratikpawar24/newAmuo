@@ -17,10 +17,31 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function RideCard({ ride }: RideCardProps) {
   const creator = typeof ride.creator === 'object' ? ride.creator : null;
+  const routeMatch = (ride as any).routeMatch;
 
   return (
     <Link href={`/g-ride/${ride._id}`}>
       <div className="card group cursor-pointer transition-all hover:shadow-md hover:border-primary-300 dark:hover:border-primary-700">
+        {/* Route match badge */}
+        {routeMatch && routeMatch.onRoute && (
+          <div className="mb-3 flex items-center gap-2 rounded-lg bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 dark:bg-green-900/20 dark:text-green-400">
+            <span>✅ On your route</span>
+            <span>•</span>
+            <span>{(routeMatch.overlapRatio * 100).toFixed(0)}% overlap</span>
+            {routeMatch.sharedDistKm > 0 && (
+              <>
+                <span>•</span>
+                <span>{routeMatch.sharedDistKm.toFixed(1)} km shared</span>
+              </>
+            )}
+            {routeMatch.co2SavedKg > 0 && (
+              <>
+                <span>•</span>
+                <span className="text-green-600">🌿 {routeMatch.co2SavedKg.toFixed(2)} kg CO₂ saved</span>
+              </>
+            )}
+          </div>
+        )}
         {/* Header */}
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
@@ -62,7 +83,12 @@ export default function RideCard({ ride }: RideCardProps) {
         <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 dark:border-slate-700">
           <div className="flex items-center gap-4 text-xs text-slate-500">
             <span>🪑 {ride.availableSeats} seats</span>
-            {ride.totalCO2Saved ? (
+            {ride.totalDistanceKm ? (
+              <span>📏 {ride.totalDistanceKm.toFixed(1)} km</span>
+            ) : null}
+            {ride.co2PerKm ? (
+              <span className="text-green-600">🌿 {(ride.co2PerKm * (ride.totalDistanceKm || 0) / 1000).toFixed(2)} kg CO₂</span>
+            ) : ride.totalCO2Saved ? (
               <span className="text-green-600">🌿 {formatCO2(ride.totalCO2Saved)} saved</span>
             ) : null}
           </div>
