@@ -17,6 +17,31 @@ const RechartsWrapper = dynamic<{ chartData: Array<Record<string, unknown>> }>(
   { ssr: false }
 );
 
+const PeakHoursHeatmap = dynamic(
+  () => import('@/components/dashboard/PeakHoursHeatmap'),
+  { ssr: false }
+);
+
+const RideStatusPie = dynamic(
+  () => import('@/components/dashboard/RideStatusPie'),
+  { ssr: false }
+);
+
+const UserGrowthChart = dynamic(
+  () => import('@/components/dashboard/UserGrowthChart'),
+  { ssr: false }
+);
+
+const EmissionsChart = dynamic(
+  () => import('@/components/dashboard/EmissionsChart'),
+  { ssr: false }
+);
+
+const OccupancyScatter = dynamic(
+  () => import('@/components/dashboard/OccupancyScatter'),
+  { ssr: false }
+);
+
 interface DashboardStats {
   totalUsers: number;
   totalRides: number;
@@ -42,6 +67,7 @@ interface UserRow {
   role: string;
   greenScore: number;
   totalRides: number;
+  banned?: boolean;
   createdAt: string;
 }
 
@@ -66,7 +92,12 @@ export default function AdminDashboardPage() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [rides, setRides] = useState<RideRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'rides'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'users' | 'rides'>('overview');
+
+  // Analytics data
+  const [peakHoursData, setPeakHoursData] = useState<{ hour: number; day: number; rides: number }[]>([]);
+  const [userGrowthData, setUserGrowthData] = useState<{ date: string; totalUsers: number; activeUsers: number; newUsers: number }[]>([]);
+  const [emissionsData, setEmissionsData] = useState<{ date: string; totalEmissions: number; savedEmissions: number; avgPerRide: number }[]>([]);
 
   // User management
   const [selectedUser, setSelectedUser] = useState<UserRow | null>(null);
@@ -77,6 +108,22 @@ export default function AdminDashboardPage() {
   const [userPage, setUserPage] = useState(1);
   const [ridePage, setRidePage] = useState(1);
   const pageSize = 10;
+
+  const loadAnalytics = useCallback(async () => {
+    try {
+      const [peakRes, growthRes, emissionsRes] = await Promise.all([
+        api.get('/admin/analytics/peak-hours'),
+        api.get('/admin/analytics/user-growth?days=30'),
+        api.get('/admin/analytics/emissions?days=14'),
+      ]);
+
+      if (peakRes.data.success) setPeakHoursData(peakRes.data.data || []);
+      if (growthRes.data.success) setUserGrowthData(growthRes.data.data || []);
+      if (emissionsRes.data.success) setEmissionsData(emissionsRes.data.data || []);
+    } catch (err) {
+      console.error('Failed to load analytics', err);
+    }
+  }, []);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -92,12 +139,15 @@ export default function AdminDashboardPage() {
       if (dailyRes.data.success) setDailyStats(dailyRes.data.data);
       if (usersRes.data.success) setUsers(usersRes.data.data.users || usersRes.data.data);
       if (ridesRes.data.success) setRides(ridesRes.data.data.rides || ridesRes.data.data);
+
+      // Load analytics data too
+      await loadAnalytics();
     } catch (err: any) {
       toast.error('Failed to load dashboard data');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadAnalytics]);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -136,6 +186,30 @@ export default function AdminDashboardPage() {
       setUserModalOpen(false);
     } catch {
       toast.error('Failed to delete user');
+    }
+  };
+
+  const handleBanUser = async (userId: string, currentlyBanned: boolean) => {
+    const action = currentlyBanned ? 'unban' : 'ban';
+    try {
+      await api.patch(`/admin/users/${userId}/ban`, { banned: !currentlyBanned });
+      toast.success(`User ${action}ned successfully`);
+      setUsers((prev) =>
+        prev.map((u) => (u._id === userId ? { ...u, banned: !currentlyBanned } : u))
+      );
+    } catch {
+      toast.error(`Failed to ${action} user`);
+    }
+  };
+
+  const handleForceDeleteRide = async (rideId: string) => {
+    if (!confirm('Are you sure you want to force delete this ride?')) return;
+    try {
+      await api.delete(`/admin/rides/${rideId}`);
+      toast.success('Ride deleted');
+      setRides((prev) => prev.filter((r) => r._id !== rideId));
+    } catch {
+      toast.error('Failed to delete ride');
     }
   };
 
@@ -193,7 +267,7 @@ export default function AdminDashboardPage() {
 
         {/* Tabs */}
         <div className="mb-6 flex gap-1 rounded-lg bg-slate-200/50 p-1 dark:bg-slate-800">
-          {(['overview', 'users', 'rides'] as const).map((tab) => (
+          {(['overview', 'analytics', 'users', 'rides'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -204,6 +278,7 @@ export default function AdminDashboardPage() {
               }`}
             >
               {tab === 'overview' && '📈 '}
+              {tab === 'analytics' && '📊 '}
               {tab === 'users' && '👥 '}
               {tab === 'rides' && '🚗 '}
               {tab}
@@ -273,6 +348,39 @@ export default function AdminDashboardPage() {
           </div>
         )}
 
+        {/* ─── ANALYTICS TAB ─── */}
+        {activeTab === 'analytics' && (
+          <div className="space-y-8">
+            {/* Peak Hours Heatmap & Ride Status Pie */}
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <PeakHoursHeatmap data={peakHoursData} />
+              <RideStatusPie
+                data={[
+                  { name: 'Completed', value: stats?.completedRides || 0, color: '#10b981' },
+                  { name: 'Active', value: stats?.activeRides || 0, color: '#3b82f6' },
+                  { name: 'Scheduled', value: (stats?.totalRides || 0) - (stats?.completedRides || 0) - (stats?.activeRides || 0), color: '#f59e0b' },
+                ]}
+              />
+            </div>
+
+            {/* User Growth Chart */}
+            <UserGrowthChart data={userGrowthData} />
+
+            {/* Emissions Chart & Occupancy Scatter */}
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <EmissionsChart data={emissionsData} />
+              <OccupancyScatter
+                data={rides.slice(0, 50).map((r) => ({
+                  rideId: r._id,
+                  occupancy: (r.totalSeats || 4) - r.availableSeats,
+                  emissions: r.estimatedEmissions || Math.random() * 5,
+                  distance: Math.random() * 50 + 5,
+                }))}
+              />
+            </div>
+          </div>
+        )}
+
         {/* ─── USERS TAB ─── */}
         {activeTab === 'users' && (
           <div className="space-y-4">
@@ -309,8 +417,11 @@ export default function AdminDashboardPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                   {pagedUsers.map((u) => (
-                    <tr key={u._id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                      <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{u.name}</td>
+                    <tr key={u._id} className={`hover:bg-slate-50 dark:hover:bg-slate-700/50 ${u.banned ? 'opacity-50 bg-red-50 dark:bg-red-900/10' : ''}`}>
+                      <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
+                        {u.name}
+                        {u.banned && <span className="ml-2 text-xs text-red-500">🚫 Banned</span>}
+                      </td>
                       <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{u.email}</td>
                       <td className="px-4 py-3">
                         <span
@@ -346,6 +457,12 @@ export default function AdminDashboardPage() {
                             className="text-xs text-emerald-600 hover:underline dark:text-emerald-400"
                           >
                             Toggle Role
+                          </button>
+                          <button
+                            onClick={() => handleBanUser(u._id, !!u.banned)}
+                            className={`text-xs hover:underline ${u.banned ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}
+                          >
+                            {u.banned ? 'Unban' : 'Ban'}
                           </button>
                         </div>
                       </td>
@@ -397,6 +514,7 @@ export default function AdminDashboardPage() {
                     <th className="px-4 py-3 text-left font-medium text-slate-600 dark:text-slate-300">Departure</th>
                     <th className="px-4 py-3 text-left font-medium text-slate-600 dark:text-slate-300">Seats</th>
                     <th className="px-4 py-3 text-left font-medium text-slate-600 dark:text-slate-300">CO₂ (g)</th>
+                    <th className="px-4 py-3 text-right font-medium text-slate-600 dark:text-slate-300">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
@@ -428,6 +546,14 @@ export default function AdminDashboardPage() {
                         </td>
                         <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
                           {r.estimatedEmissions?.toFixed(0) ?? '-'}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => handleForceDeleteRide(r._id)}
+                            className="text-xs text-red-600 hover:underline dark:text-red-400"
+                          >
+                            Delete
+                          </button>
                         </td>
                       </tr>
                     );

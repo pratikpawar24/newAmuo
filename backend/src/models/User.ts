@@ -7,6 +7,7 @@ export interface IUser extends Document {
   phone: string;
   avatarUrl: string;
   role: 'user' | 'admin';
+  banned: boolean;
   preferences: {
     maxDetourMinutes: number;
     sameGenderOnly: boolean;
@@ -37,6 +38,7 @@ const UserSchema = new Schema<IUser>(
     phone: { type: String, default: '' },
     avatarUrl: { type: String, default: '' },
     role: { type: String, enum: ['user', 'admin'], default: 'user' },
+    banned: { type: Boolean, default: false },
     preferences: {
       maxDetourMinutes: { type: Number, default: 15 },
       sameGenderOnly: { type: Boolean, default: false },

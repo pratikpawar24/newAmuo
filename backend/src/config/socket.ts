@@ -53,6 +53,17 @@ export function initSocket(httpServer: HTTPServer): Server {
     // Join personal room for notifications
     socket.join(`user:${socket.userId}`);
 
+    // ─── Ride Room Events ──────────────────────────────────────────────
+
+    socket.on('ride:join_room', (data: { rideId: string }) => {
+      socket.join(`ride:${data.rideId}`);
+      logger.debug(`User ${socket.userId} joined ride room ${data.rideId}`);
+    });
+
+    socket.on('ride:leave_room', (data: { rideId: string }) => {
+      socket.leave(`ride:${data.rideId}`);
+    });
+
     // ─── Chat Events ───────────────────────────────────────────────────
 
     socket.on('chat:join', (chatRoomId: string) => {
@@ -95,12 +106,43 @@ export function initSocket(httpServer: HTTPServer): Server {
     });
 
     socket.on('chat:typing', (data: { chatRoomId: string; isTyping: boolean }) => {
-      socket.to(`chat:${data.chatRoomId}`).emit('chat:typing', {
+      socket.to(`chat:${data.chatRoomId}`).emit('chat:user_typing', {
         userId: socket.userId,
         userName: socket.userName,
         isTyping: data.isTyping,
         chatRoomId: data.chatRoomId,
       });
+    });
+
+    socket.on('chat:stop_typing', (data: { chatRoomId: string }) => {
+      socket.to(`chat:${data.chatRoomId}`).emit('chat:user_typing', {
+        userId: socket.userId,
+        userName: socket.userName,
+        isTyping: false,
+        chatRoomId: data.chatRoomId,
+      });
+    });
+
+    socket.on('chat:send_message', async (data: { roomId: string; content: string; messageType?: string; priceOffer?: number }) => {
+      try {
+        const message = await Message.create({
+          chatRoomId: data.roomId,
+          sender: socket.userId,
+          content: data.content,
+          messageType: data.messageType || 'text',
+          priceOffer: data.priceOffer,
+          readBy: [socket.userId],
+        });
+
+        const populated = await Message.findById(message._id)
+          .populate('sender', 'fullName avatarUrl')
+          .lean();
+
+        io.to(`chat:${data.roomId}`).emit('chat:new_message', populated);
+      } catch (error) {
+        socket.emit('chat:error', { message: 'Failed to send message' });
+        logger.error('Chat send_message error:', error);
+      }
     });
 
     socket.on('chat:read', async (data: { chatRoomId: string }) => {
@@ -171,7 +213,7 @@ export function initSocket(httpServer: HTTPServer): Server {
     });
 
     socket.on('ride:location_update', (data: { rideId: string; lat: number; lng: number }) => {
-      socket.to(`ride:${data.rideId}`).emit('ride:location', {
+      socket.to(`ride:${data.rideId}`).emit('location:driver_update', {
         userId: socket.userId,
         lat: data.lat,
         lng: data.lng,

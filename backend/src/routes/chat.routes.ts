@@ -7,9 +7,9 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/rooms', getRooms);
-router.get('/rooms/:chatRoomId/messages', getMessages);
-router.post('/rooms/:chatRoomId/messages', sendMessage);
-router.post('/rooms/:chatRoomId/price-offer', sendPriceOffer);
-router.patch('/messages/:messageId/price-response', respondToPrice);
+router.get('/rooms/:roomId/messages', getMessages);
+router.post('/rooms/:roomId/messages', sendMessage);
+router.post('/rooms/:roomId/price-offer', sendPriceOffer);
+router.post('/rooms/:roomId/price-respond', respondToPrice);
 
 export default router;

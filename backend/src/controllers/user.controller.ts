@@ -1,7 +1,9 @@
 import { Request, Response } from 'express';
 import { User } from '../models/User';
 import { Ride } from '../models/Ride';
+import { Notification } from '../models/Notification';
 import { updateUserGreenScore } from '../services/greenScore.service';
+import { getUserNotifications, markAsRead } from '../services/notification.service';
 import { logger } from '../utils/logger';
 import bcrypt from 'bcrypt';
 
@@ -24,11 +26,11 @@ export async function updateProfile(req: Request, res: Response): Promise<void> 
     if (bio !== undefined) updateFields.bio = bio;
     if (avatar) updateFields.avatarUrl = avatar;
     if (preferences) {
-      if (preferences.smoking !== undefined) updateFields['preferences.smoking'] = preferences.smoking;
-      if (preferences.music !== undefined) updateFields['preferences.music'] = preferences.music;
-      if (preferences.pets !== undefined) updateFields['preferences.pets'] = preferences.pets;
-      if (preferences.chatty !== undefined) updateFields['preferences.chatty'] = preferences.chatty;
-      if (preferences.routePreference !== undefined) updateFields['preferences.routePreference'] = preferences.routePreference;
+      if (preferences.maxDetourMinutes !== undefined) updateFields['preferences.maxDetourMinutes'] = preferences.maxDetourMinutes;
+      if (preferences.sameGenderOnly !== undefined) updateFields['preferences.sameGenderOnly'] = preferences.sameGenderOnly;
+      if (preferences.smokingAllowed !== undefined) updateFields['preferences.smokingAllowed'] = preferences.smokingAllowed;
+      if (preferences.musicPreference !== undefined) updateFields['preferences.musicPreference'] = preferences.musicPreference;
+      if (preferences.pickupFlexibilityMeters !== undefined) updateFields['preferences.pickupFlexibilityMeters'] = preferences.pickupFlexibilityMeters;
     }
 
     const user = await User.findByIdAndUpdate(req.user!.userId, { $set: updateFields }, { new: true, runValidators: true }).select('-passwordHash -refreshTokens');
@@ -36,6 +38,18 @@ export async function updateProfile(req: Request, res: Response): Promise<void> 
     res.json({ success: true, data: user, message: 'Profile updated' });
   } catch (error) {
     res.status(500).json({ success: false, error: 'Failed to update profile' });
+  }
+}
+
+export async function uploadAvatar(req: Request, res: Response): Promise<void> {
+  try {
+    const { avatarUrl } = req.body;
+    if (!avatarUrl) { res.status(400).json({ success: false, error: 'Avatar URL required' }); return; }
+    const user = await User.findByIdAndUpdate(req.user!.userId, { avatarUrl }, { new: true }).select('-passwordHash -refreshTokens');
+    if (!user) { res.status(404).json({ success: false, error: 'User not found' }); return; }
+    res.json({ success: true, data: { avatarUrl: user.avatarUrl }, message: 'Avatar updated' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to upload avatar' });
   }
 }
 
@@ -130,5 +144,55 @@ export async function getLeaderboard(req: Request, res: Response): Promise<void>
     });
   } catch (error) {
     res.status(500).json({ success: false, error: 'Failed to get leaderboard' });
+  }
+}
+
+export async function getNotifications(req: Request, res: Response): Promise<void> {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+    const skip = (page - 1) * limit;
+
+    const notifications = await getUserNotifications(req.user!.userId, limit, skip);
+    const unreadCount = await Notification.countDocuments({ userId: req.user!.userId, read: false });
+
+    res.json({
+      success: true,
+      data: { notifications, unreadCount, page, limit },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to get notifications' });
+  }
+}
+
+export async function markNotificationRead(req: Request, res: Response): Promise<void> {
+  try {
+    const { notificationId } = req.params;
+    const updated = await markAsRead(notificationId, req.user!.userId);
+    if (!updated) { res.status(404).json({ success: false, error: 'Notification not found' }); return; }
+    res.json({ success: true, message: 'Marked as read' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to mark notification' });
+  }
+}
+
+export async function getUnreadCount(req: Request, res: Response): Promise<void> {
+  try {
+    const count = await Notification.countDocuments({ recipient: req.user!.userId, read: false });
+    res.json({ success: true, data: { count } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to get unread count' });
+  }
+}
+
+export async function markAllNotificationsRead(req: Request, res: Response): Promise<void> {
+  try {
+    await Notification.updateMany(
+      { recipient: req.user!.userId, read: false },
+      { $set: { read: true } }
+    );
+    res.json({ success: true, message: 'All notifications marked as read' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to mark notifications' });
   }
 }

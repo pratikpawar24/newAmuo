@@ -77,3 +77,47 @@ export async function getMultiRoute(req: Request, res: Response): Promise<void> 
     res.status(500).json({ success: false, error: 'Failed to calculate routes' });
   }
 }
+
+export async function ecoCompare(req: Request, res: Response): Promise<void> {
+  try {
+    const { origin, destination, departureTime } = req.body;
+
+    if (!origin || !destination) {
+      res.status(400).json({ success: false, error: 'Origin and destination required' });
+      return;
+    }
+
+    const [standardRoute, ecoRoute] = await Promise.all([
+      calculateRoute(
+        { lat: origin.lat, lng: origin.lng },
+        { lat: destination.lat, lng: destination.lng },
+        departureTime || new Date().toISOString(),
+        { alpha: 0.9, beta: 0.05, gamma: 0.05 }, // Standard: prioritize time
+      ),
+      calculateRoute(
+        { lat: origin.lat, lng: origin.lng },
+        { lat: destination.lat, lng: destination.lng },
+        departureTime || new Date().toISOString(),
+        { alpha: 0.2, beta: 0.6, gamma: 0.2 }, // Eco: prioritize emissions
+      ),
+    ]);
+
+    const comparison = {
+      standard: standardRoute,
+      eco: ecoRoute,
+      savings: {
+        timeDifferenceMin: (ecoRoute?.primary?.durationMin || 0) - (standardRoute?.primary?.durationMin || 0),
+        co2SavedGrams: (standardRoute?.primary?.co2Grams || 0) - (ecoRoute?.primary?.co2Grams || 0),
+        distanceDifferenceKm: (ecoRoute?.primary?.distanceKm || 0) - (standardRoute?.primary?.distanceKm || 0),
+        percentageCO2Saved: standardRoute?.primary?.co2Grams
+          ? (((standardRoute.primary.co2Grams - (ecoRoute?.primary?.co2Grams || 0)) / standardRoute.primary.co2Grams) * 100).toFixed(1)
+          : '0',
+      },
+    };
+
+    res.json({ success: true, data: comparison });
+  } catch (error) {
+    logger.error('Eco-compare error:', error);
+    res.status(500).json({ success: false, error: 'Failed to compare routes' });
+  }
+}

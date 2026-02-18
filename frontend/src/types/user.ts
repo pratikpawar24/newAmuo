@@ -10,6 +10,7 @@ export interface User {
   bio?: string;
   greenScore: number;
   badges: string[];
+  banned?: boolean;
   preferences: UserPreferences;
   stats: UserStats;
   createdAt: string;
@@ -17,11 +18,16 @@ export interface User {
 }
 
 export interface UserPreferences {
-  smoking: boolean;
-  music: boolean;
-  pets: boolean;
-  chatty: boolean;
-  routePreference: 'fastest' | 'greenest' | 'balanced';
+  smoking?: boolean;
+  smokingAllowed?: boolean;
+  music?: boolean;
+  musicPreference?: 'none' | 'quiet' | 'any';
+  pets?: boolean;
+  chatty?: boolean;
+  sameGenderOnly?: boolean;
+  maxDetourMinutes?: number;
+  pickupFlexibilityMeters?: number;
+  routePreference?: 'fastest' | 'greenest' | 'balanced';
 }
 
 export interface UserStats {
@@ -45,4 +51,21 @@ export interface RegisterPayload {
 export interface LeaderboardEntry extends Pick<User, '_id' | 'name' | 'avatar' | 'greenScore' | 'badges'> {
   rank: number;
   stats: Pick<UserStats, 'totalRides' | 'totalCO2Saved'>;
+}
+
+export interface Notification {
+  _id: string;
+  recipient: string;
+  type: 'ride_request' | 'ride_accepted' | 'ride_rejected' | 'ride_cancelled' | 'ride_started' | 'ride_completed' | 'new_message' | 'badge_earned' | 'system';
+  title: string;
+  message: string;
+  data?: {
+    rideId?: string;
+    chatRoomId?: string;
+    senderId?: string;
+    badge?: string;
+  };
+  read: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
