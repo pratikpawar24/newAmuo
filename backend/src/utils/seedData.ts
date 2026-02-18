@@ -76,7 +76,7 @@ export async function seedDatabase(): Promise<void> {
     const origin = PUNE_LOCATIONS[Math.floor(Math.random() * PUNE_LOCATIONS.length)];
     let dest = PUNE_LOCATIONS[Math.floor(Math.random() * PUNE_LOCATIONS.length)];
     while (dest.name === origin.name) {
-      dest = MUMBAI_LOCATIONS[Math.floor(Math.random() * MUMBAI_LOCATIONS.length)];
+      dest = PUNE_LOCATIONS[Math.floor(Math.random() * PUNE_LOCATIONS.length)];
     }
 
     const departureTime = new Date();
