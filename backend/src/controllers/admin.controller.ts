@@ -24,7 +24,7 @@ export async function getDashboard(req: Request, res: Response): Promise<void> {
       User.countDocuments(),
       User.countDocuments({ createdAt: { $gte: thirtyDaysAgo } }),
       Ride.countDocuments(),
-      Ride.countDocuments({ status: { $in: ['pending', 'in_progress'] } }),
+      Ride.countDocuments({ status: { $in: ['active', 'in_progress'] } }),
       Ride.countDocuments({ status: 'completed' }),
       SiteStats.find().sort({ date: -1 }).limit(30).lean(),
     ]);
@@ -85,8 +85,8 @@ export async function getUserById(req: Request, res: Response): Promise<void> {
     const user = await User.findById(req.params.userId).select('-passwordHash -refreshTokens').lean();
     if (!user) { res.status(404).json({ success: false, error: 'User not found' }); return; }
 
-    const ridesCreated = await Ride.countDocuments({ driver: user._id });
-    const ridesBooked = await Ride.countDocuments({ 'passengers.user': user._id, 'passengers.status': 'accepted' });
+    const ridesCreated = await Ride.countDocuments({ creator: user._id });
+    const ridesBooked = await Ride.countDocuments({ 'passengers.userId': user._id, 'passengers.status': 'accepted' });
 
     res.json({ success: true, data: { ...user, ridesCreated, ridesBooked } });
   } catch (error) {
@@ -123,7 +123,7 @@ export async function deleteUser(req: Request, res: Response): Promise<void> {
     if (!user) { res.status(404).json({ success: false, error: 'User not found' }); return; }
 
     await Promise.all([
-      Ride.deleteMany({ driver: user._id }),
+      Ride.deleteMany({ creator: user._id }),
       Notification.deleteMany({ userId: user._id }),
     ]);
 
@@ -141,12 +141,12 @@ export async function getRides(req: Request, res: Response): Promise<void> {
     const status = req.query.status as string;
 
     const filter: Record<string, unknown> = {};
-    if (status && ['pending', 'in_progress', 'completed', 'cancelled'].includes(status)) {
+    if (status && ['active', 'in_progress', 'completed', 'cancelled'].includes(status)) {
       filter.status = status;
     }
 
     const [rides, total] = await Promise.all([
-      Ride.find(filter).populate('driver', 'fullName email avatarUrl').sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      Ride.find(filter).populate('creator', 'fullName email avatarUrl').sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
       Ride.countDocuments(filter),
     ]);
 

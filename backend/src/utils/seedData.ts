@@ -44,23 +44,25 @@ export async function seedDatabase(): Promise<void> {
     DEMO_USERS.map((u) => ({
       fullName: u.name,
       email: u.email,
-      password: u.role === 'admin' ? adminPassword : hashedPassword,
+      passwordHash: u.role === 'admin' ? adminPassword : hashedPassword,
       role: u.role,
       greenScore: u.greenScore,
-      avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(u.name)}`,
+      avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(u.name)}`,
       preferences: {
-        smoking: false,
-        music: true,
-        pets: false,
-        chatty: true,
-        routePreference: 'balanced',
+        maxDetourMinutes: 15,
+        sameGenderOnly: false,
+        smokingAllowed: false,
+        musicPreference: 'no_preference',
+        pickupFlexibilityMeters: 500,
       },
       badges: u.greenScore >= 90 ? ['eco_warrior'] : u.greenScore >= 70 ? ['green_starter'] : [],
       stats: {
-        totalRides: Math.floor(Math.random() * 30) + 5,
-        totalCO2Saved: Math.round(Math.random() * 50 * 100) / 100,
-        totalDistance: Math.round(Math.random() * 500 * 100) / 100,
-        activeDays: Math.floor(Math.random() * 60) + 10,
+        totalRidesCreated: Math.floor(Math.random() * 15) + 3,
+        totalRidesBooked: Math.floor(Math.random() * 15) + 2,
+        totalDistanceKm: Math.round(Math.random() * 500 * 100) / 100,
+        totalCO2SavedKg: Math.round(Math.random() * 50 * 100) / 100,
+        sharedRidesCount: Math.floor(Math.random() * 10) + 1,
+        activeDaysLast30: [],
       },
     }))
   );
@@ -72,7 +74,7 @@ export async function seedDatabase(): Promise<void> {
   const rides = [];
 
   for (let i = 0; i < 15; i++) {
-    const driver = regularUsers[i % regularUsers.length];
+    const creator = regularUsers[i % regularUsers.length];
     const origin = PUNE_LOCATIONS[Math.floor(Math.random() * PUNE_LOCATIONS.length)];
     let dest = PUNE_LOCATIONS[Math.floor(Math.random() * PUNE_LOCATIONS.length)];
     while (dest.name === origin.name) {
@@ -82,32 +84,33 @@ export async function seedDatabase(): Promise<void> {
     const departureTime = new Date();
     departureTime.setHours(departureTime.getHours() + Math.floor(Math.random() * 48));
 
-    const distanceKm = Math.round((Math.random() * 20 + 3) * 100) / 100;
-    const fare = Math.round(distanceKm * 8 + 20);
-    const status = i < 10 ? 'pending' : i < 13 ? 'in_progress' : 'completed';
+    const totalDistanceKm = Math.round((Math.random() * 20 + 3) * 100) / 100;
+    const pricePerSeat = Math.round(totalDistanceKm * 8 + 20);
+    const status = i < 10 ? 'active' : i < 13 ? 'in_progress' : 'completed';
+    const co2PerKm = Math.round((Math.random() * 30 + 100) * 100) / 100;
 
     rides.push({
-      driver: driver._id,
-      origin: { address: origin.name, coordinates: [origin.lng, origin.lat] },
-      destination: { address: dest.name, coordinates: [dest.lng, dest.lat] },
+      creator: creator._id,
+      origin: { address: origin.name, coordinates: { lat: origin.lat, lng: origin.lng } },
+      destination: { address: dest.name, coordinates: { lat: dest.lat, lng: dest.lng } },
       departureTime,
+      totalSeats: 4,
       availableSeats: Math.floor(Math.random() * 3) + 1,
-      fare,
+      pricePerSeat,
+      currency: 'INR',
       status,
       chatRoomId: uuid(),
       vehicleInfo: {
-        model: ['Maruti Swift', 'Hyundai i20', 'Honda City', 'Tata Nexon'][Math.floor(Math.random() * 4)],
+        make: ['Maruti', 'Hyundai', 'Honda', 'Tata'][Math.floor(Math.random() * 4)],
+        model: ['Swift', 'i20', 'City', 'Nexon'][Math.floor(Math.random() * 4)],
         color: ['White', 'Silver', 'Black', 'Blue'][Math.floor(Math.random() * 4)],
         plateNumber: `MH12-${String.fromCharCode(65 + Math.floor(Math.random() * 26))}${String.fromCharCode(65 + Math.floor(Math.random() * 26))}-${Math.floor(1000 + Math.random() * 9000)}`,
+        fuelType: (['petrol', 'diesel', 'electric', 'hybrid'] as const)[Math.floor(Math.random() * 4)],
       },
-      distanceKm,
-      estimatedDuration: Math.round(distanceKm * 3 + 10),
-      emissions: {
-        total: Math.round(distanceKm * 120 * 100) / 100,
-        perPassenger: Math.round(distanceKm * 60 * 100) / 100,
-        saved: Math.round(distanceKm * 60 * 100) / 100,
-        treeDaysEquivalent: Math.round((distanceKm * 60) / 22000 * 100) / 100,
-      },
+      totalDistanceKm,
+      estimatedDurationMin: Math.round(totalDistanceKm * 3 + 10),
+      co2PerKm,
+      totalCO2Saved: Math.round(totalDistanceKm * co2PerKm * 0.5) / 100,
     });
   }
 
@@ -129,15 +132,11 @@ export async function seedDatabase(): Promise<void> {
 
     statsOps.push({
       date,
+      totalVisitors: Math.floor(Math.random() * 50) + 20,
       totalUsers: Math.floor(Math.random() * 5) + userDocs.length,
-      totalRides: Math.floor(Math.random() * 10) + 3,
-      completedRides: Math.floor(Math.random() * 8) + 1,
-      totalCO2Saved: Math.round(Math.random() * 30 * 100) / 100,
-      totalEmissions: Math.round(Math.random() * 80 * 100) / 100,
-      totalDistance: Math.round(Math.random() * 200 * 100) / 100,
-      averageRideDistance: Math.round((Math.random() * 15 + 3) * 100) / 100,
-      activeDrivers: Math.floor(Math.random() * 4) + 1,
-      activePassengers: Math.floor(Math.random() * 6) + 2,
+      totalRidesCreated: Math.floor(Math.random() * 10) + 3,
+      totalRidesCompleted: Math.floor(Math.random() * 8) + 1,
+      totalCO2SavedKg: Math.round(Math.random() * 30 * 100) / 100,
       peakHourDistribution,
     });
   }

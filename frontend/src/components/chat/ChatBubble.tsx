@@ -22,7 +22,7 @@ export default function ChatBubble({ message, isOwn }: ChatBubbleProps) {
           <div className="bg-white p-4 text-center dark:bg-slate-800">
             <p className="text-3xl font-bold text-slate-900 dark:text-white">₹{message.priceOffer.amount}</p>
             <p className="mt-1 text-xs text-slate-500">
-              from {isOwn ? 'you' : sender?.name || 'user'}
+              from {isOwn ? 'you' : sender?.fullName || 'user'}
             </p>
             <span
               className={cn(
@@ -55,11 +55,11 @@ export default function ChatBubble({ message, isOwn }: ChatBubbleProps) {
   return (
     <div className={cn('mb-3 flex items-end gap-2', isOwn ? 'flex-row-reverse' : 'flex-row')}>
       {!isOwn && (
-        sender?.avatar ? (
-          <img src={sender.avatar} alt="" className="h-7 w-7 rounded-full" />
+        sender?.avatarUrl ? (
+          <img src={sender.avatarUrl} alt="" className="h-7 w-7 rounded-full" />
         ) : (
           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-200 text-[10px] font-bold dark:bg-slate-600">
-            {getInitials(sender?.name || 'U')}
+            {getInitials(sender?.fullName || 'U')}
           </div>
         )
       )}
@@ -72,7 +72,7 @@ export default function ChatBubble({ message, isOwn }: ChatBubbleProps) {
         )}
       >
         {!isOwn && sender && (
-          <p className="mb-0.5 text-[10px] font-semibold text-primary-600 dark:text-primary-400">{sender.name}</p>
+          <p className="mb-0.5 text-[10px] font-semibold text-primary-600 dark:text-primary-400">{sender.fullName}</p>
         )}
         <p className="whitespace-pre-wrap break-words">{message.content}</p>
         <p className={cn('mt-1 text-[10px]', isOwn ? 'text-white/60' : 'text-slate-400')}>

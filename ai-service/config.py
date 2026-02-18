@@ -27,10 +27,10 @@ class ModelConfig:
 @dataclass
 class GraphConfig:
     osm_bbox: Tuple[float, float, float, float] = field(default_factory=lambda: (
-        float(os.getenv("OSM_BBOX", "12.85,77.45,13.15,77.75").split(",")[0]),
-        float(os.getenv("OSM_BBOX", "12.85,77.45,13.15,77.75").split(",")[1]),
-        float(os.getenv("OSM_BBOX", "12.85,77.45,13.15,77.75").split(",")[2]),
-        float(os.getenv("OSM_BBOX", "12.85,77.45,13.15,77.75").split(",")[3]),
+        float(os.getenv("OSM_BBOX", "18.40,73.70,18.65,73.95").split(",")[0]),
+        float(os.getenv("OSM_BBOX", "18.40,73.70,18.65,73.95").split(",")[1]),
+        float(os.getenv("OSM_BBOX", "18.40,73.70,18.65,73.95").split(",")[2]),
+        float(os.getenv("OSM_BBOX", "18.40,73.70,18.65,73.95").split(",")[3]),
     ))
     v_max_kmh: float = 120.0
     bpr_alpha: float = 0.15
@@ -93,7 +93,7 @@ IS_HF_SPACE = HF_SPACE is not None
 PORT = int(os.getenv("PORT", "7860" if IS_HF_SPACE else "8000"))
 
 # CORS origins for production
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5000").split(",")
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5000,https://aumo7.vercel.app,https://aumo-api-arpk.onrender.com").split(",")
 
 # Backend URL for callbacks (if needed)
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:5000")

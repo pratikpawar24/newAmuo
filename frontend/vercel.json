@@ -20,7 +20,7 @@
   "rewrites": [
     {
       "source": "/socket.io/:path*",
-      "destination": "${NEXT_PUBLIC_API_URL}/socket.io/:path*"
+      "destination": "https://aumo-api-arpk.onrender.com/socket.io/:path*"
     }
   ]
 }

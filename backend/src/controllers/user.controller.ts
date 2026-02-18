@@ -101,7 +101,7 @@ export async function getMyStats(req: Request, res: Response): Promise<void> {
 export async function getPublicProfile(req: Request, res: Response): Promise<void> {
   try {
     const user = await User.findById(req.params.userId)
-      .select('fullName avatarUrl bio greenScore badges stats.totalRides stats.totalCO2Saved preferences createdAt')
+      .select('fullName avatarUrl greenScore badges stats createdAt')
       .lean();
     if (!user) { res.status(404).json({ success: false, error: 'User not found' }); return; }
     res.json({ success: true, data: user });
@@ -117,7 +117,7 @@ export async function getLeaderboard(req: Request, res: Response): Promise<void>
     const skip = (page - 1) * limit;
 
     const users = await User.find({ role: 'user' })
-      .select('fullName avatarUrl greenScore badges stats.totalRides stats.totalCO2Saved')
+      .select('fullName avatarUrl greenScore badges stats')
       .sort({ greenScore: -1 })
       .skip(skip)
       .limit(limit)

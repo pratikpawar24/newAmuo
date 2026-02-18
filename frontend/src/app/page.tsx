@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import AddressAutocomplete from '@/components/map/AddressAutocomplete';
@@ -9,6 +9,7 @@ import WeightSlider from '@/components/ui/WeightSlider';
 import Button from '@/components/ui/Button';
 import { useMap } from '@/hooks/useMap';
 import { useAuth } from '@/hooks/useAuth';
+import { useGeolocation } from '@/hooks/useGeolocation';
 import { formatDistance, formatDuration, formatCO2 } from '@/lib/utils';
 
 const MapView = dynamic(() => import('@/components/map/MapView'), { ssr: false });
@@ -20,9 +21,28 @@ interface LatLng { lat: number; lng: number }
 export default function HomePage() {
   useAuth();
   const { route, isCalculating, calculateRoute, clearRoute } = useMap();
+  const { lat: gpsLat, lng: gpsLng, loading: gpsLoading, error: gpsError, requestLocation } = useGeolocation(true);
   const [origin, setOrigin] = useState<LatLng | null>(null);
   const [destination, setDestination] = useState<LatLng | null>(null);
+  const [originLabel, setOriginLabel] = useState('');
   const [weights, setWeights] = useState({ alpha: 0.5, beta: 0.3, gamma: 0.2 });
+
+  // Auto-set origin to GPS location when available and no origin is selected
+  useEffect(() => {
+    if (gpsLat && gpsLng && !origin) {
+      setOrigin({ lat: gpsLat, lng: gpsLng });
+      setOriginLabel('📍 My Location');
+    }
+  }, [gpsLat, gpsLng, origin]);
+
+  const handleUseMyLocation = () => {
+    if (gpsLat && gpsLng) {
+      setOrigin({ lat: gpsLat, lng: gpsLng });
+      setOriginLabel('📍 My Location');
+    } else {
+      requestLocation();
+    }
+  };
 
   const normalizeWeights = useCallback((key: 'alpha' | 'beta' | 'gamma', value: number) => {
     const others = Object.keys(weights).filter((k) => k !== key) as Array<'alpha' | 'beta' | 'gamma'>;
@@ -55,8 +75,25 @@ export default function HomePage() {
             <AddressAutocomplete
               label="Origin"
               placeholder="Start location..."
-              onSelect={(r) => setOrigin({ lat: r.lat, lng: r.lng })}
+              value={originLabel}
+              onSelect={(r) => {
+                setOrigin({ lat: r.lat, lng: r.lng });
+                setOriginLabel(r.display_name.split(',').slice(0, 2).join(', '));
+              }}
             />
+            <button
+              type="button"
+              onClick={handleUseMyLocation}
+              disabled={gpsLoading}
+              className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 disabled:opacity-50 -mt-2"
+            >
+              {gpsLoading ? (
+                <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+              ) : (
+                <span>📍</span>
+              )}
+              {gpsLoading ? 'Getting location...' : gpsError ? 'Retry GPS Location' : 'Use My Location'}
+            </button>
             <AddressAutocomplete
               label="Destination"
               placeholder="End location..."
@@ -103,7 +140,7 @@ export default function HomePage() {
 
         {/* Map */}
         <div className="flex-1">
-          <MapView center={origin ? [origin.lat, origin.lng] : [19.076, 72.8777]} zoom={13}>
+          <MapView center={origin ? [origin.lat, origin.lng] : gpsLat && gpsLng ? [gpsLat, gpsLng] : [18.5204, 73.8567]} zoom={13}>
             {route && <RoutePolyline route={route} />}
           </MapView>
         </div>

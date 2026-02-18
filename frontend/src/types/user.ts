@@ -1,11 +1,11 @@
 export interface User {
   _id: string;
-  name: string;
-  fullName?: string;
+  fullName: string;
+  name?: string; // alias for backward compat
   email: string;
   role: 'user' | 'admin';
-  avatar?: string;
   avatarUrl?: string;
+  avatar?: string; // alias for backward compat
   phone?: string;
   bio?: string;
   greenScore: number;
@@ -18,23 +18,20 @@ export interface User {
 }
 
 export interface UserPreferences {
-  smoking?: boolean;
-  smokingAllowed?: boolean;
-  music?: boolean;
-  musicPreference?: 'none' | 'quiet' | 'any';
-  pets?: boolean;
-  chatty?: boolean;
-  sameGenderOnly?: boolean;
   maxDetourMinutes?: number;
+  sameGenderOnly?: boolean;
+  smokingAllowed?: boolean;
+  musicPreference?: 'silent' | 'any' | 'no_preference';
   pickupFlexibilityMeters?: number;
-  routePreference?: 'fastest' | 'greenest' | 'balanced';
 }
 
 export interface UserStats {
-  totalRides: number;
-  totalCO2Saved: number;
-  totalDistance: number;
-  activeDays: number;
+  totalRidesCreated: number;
+  totalRidesBooked: number;
+  totalDistanceKm: number;
+  totalCO2SavedKg: number;
+  sharedRidesCount: number;
+  activeDaysLast30: string[];
 }
 
 export interface LoginPayload {
@@ -49,9 +46,9 @@ export interface RegisterPayload {
   phone?: string;
 }
 
-export interface LeaderboardEntry extends Pick<User, '_id' | 'name' | 'avatar' | 'greenScore' | 'badges'> {
+export interface LeaderboardEntry extends Pick<User, '_id' | 'fullName' | 'avatarUrl' | 'greenScore' | 'badges'> {
   rank: number;
-  stats: Pick<UserStats, 'totalRides' | 'totalCO2Saved'>;
+  stats: Pick<UserStats, 'totalRidesCreated' | 'totalCO2SavedKg'>;
 }
 
 export interface Notification {

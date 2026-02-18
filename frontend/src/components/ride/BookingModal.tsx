@@ -18,7 +18,7 @@ interface BookingModalProps {
 export default function BookingModal({ rideId, fare, ride, isOpen, onClose, onConfirm, loading }: BookingModalProps) {
   const [isBooking, setIsBooking] = useState(false);
 
-  const displayFare = fare ?? ride?.fare ?? 0;
+  const displayFare = fare ?? ride?.pricePerSeat ?? 0;
 
   const handleBook = async () => {
     setIsBooking(true);

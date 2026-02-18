@@ -1,7 +1,7 @@
 export interface ChatMessage {
   _id: string;
   chatRoomId: string;
-  sender: string | { _id: string; name: string; avatar?: string };
+  sender: string | { _id: string; fullName: string; avatarUrl?: string };
   content: string;
   messageType: 'text' | 'system' | 'price_offer' | 'location';
   priceOffer?: {
@@ -13,17 +13,11 @@ export interface ChatMessage {
 }
 
 export interface ChatRoom {
-  chatRoomId: string;
-  ride: {
-    _id: string;
-    origin: { address: string };
-    destination: { address: string };
-  };
-  otherUser: {
-    _id: string;
-    name: string;
-    avatar?: string;
-  };
-  lastMessage?: ChatMessage;
+  roomId: string;
+  rideId: string;
+  rideName: string;
+  rideStatus: string;
+  lastMessage?: { content: string; createdAt: string; messageType: string };
   unreadCount: number;
+  participants: Array<{ _id: string; fullName: string; avatarUrl?: string } | string>;
 }

@@ -12,12 +12,11 @@ import type { UserPreferences } from '@/types/user';
 interface FormData {
   name: string;
   phone: string;
-  bio: string;
-  smoking: boolean;
-  music: boolean;
-  pets: boolean;
-  chatty: boolean;
-  routePreference: 'fastest' | 'greenest' | 'balanced';
+  smokingAllowed: boolean;
+  sameGenderOnly: boolean;
+  maxDetourMinutes: number;
+  pickupFlexibilityMeters: number;
+  musicPreference: 'silent' | 'any' | 'no_preference';
 }
 
 export default function PreferencesForm() {
@@ -27,14 +26,13 @@ export default function PreferencesForm() {
 
   const { register, handleSubmit } = useForm<FormData>({
     defaultValues: {
-      name: user?.name || '',
+      name: user?.fullName || user?.name || '',
       phone: user?.phone || '',
-      bio: user?.bio || '',
-      smoking: user?.preferences?.smoking || false,
-      music: user?.preferences?.music ?? true,
-      pets: user?.preferences?.pets || false,
-      chatty: user?.preferences?.chatty ?? true,
-      routePreference: user?.preferences?.routePreference || 'balanced',
+      smokingAllowed: user?.preferences?.smokingAllowed ?? false,
+      sameGenderOnly: user?.preferences?.sameGenderOnly ?? false,
+      maxDetourMinutes: user?.preferences?.maxDetourMinutes ?? 15,
+      pickupFlexibilityMeters: user?.preferences?.pickupFlexibilityMeters ?? 500,
+      musicPreference: user?.preferences?.musicPreference || 'no_preference',
     },
   });
 
@@ -44,13 +42,12 @@ export default function PreferencesForm() {
       const { data: res } = await api.patch('/users/profile', {
         name: data.name,
         phone: data.phone,
-        bio: data.bio,
         preferences: {
-          smoking: data.smoking,
-          music: data.music,
-          pets: data.pets,
-          chatty: data.chatty,
-          routePreference: data.routePreference,
+          smokingAllowed: data.smokingAllowed,
+          sameGenderOnly: data.sameGenderOnly,
+          maxDetourMinutes: data.maxDetourMinutes,
+          pickupFlexibilityMeters: data.pickupFlexibilityMeters,
+          musicPreference: data.musicPreference,
         },
       });
       updateUser(res.data);
@@ -68,31 +65,38 @@ export default function PreferencesForm() {
         <Input label="Name" {...register('name')} />
         <Input label="Phone" type="tel" {...register('phone')} />
       </div>
-      <Input label="Bio" {...register('bio')} />
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Max Detour (minutes)</label>
+          <input type="number" {...register('maxDetourMinutes', { valueAsNumber: true })} className="input-field w-full" min={0} max={60} />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Pickup Flexibility (meters)</label>
+          <input type="number" {...register('pickupFlexibilityMeters', { valueAsNumber: true })} className="input-field w-full" min={0} max={2000} step={100} />
+        </div>
+      </div>
 
       <div>
-        <p className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-300">Route Preference</p>
-        <select {...register('routePreference')} className="input-field">
-          <option value="fastest">🏎️ Fastest</option>
-          <option value="greenest">🌿 Greenest</option>
-          <option value="balanced">⚖️ Balanced</option>
+        <p className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-300">Music Preference</p>
+        <select {...register('musicPreference')} className="input-field">
+          <option value="no_preference">� No Preference</option>
+          <option value="any">� Music OK</option>
+          <option value="silent">🔇 Prefer Silent</option>
         </select>
       </div>
 
       <div>
         <p className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-300">Ride Preferences</p>
         <div className="grid grid-cols-2 gap-3">
-          {[
-            { name: 'smoking' as const, label: '🚬 Smoking OK', key: 'smoking' },
-            { name: 'music' as const, label: '🎵 Music OK', key: 'music' },
-            { name: 'pets' as const, label: '🐕 Pets OK', key: 'pets' },
-            { name: 'chatty' as const, label: '💬 Chatty', key: 'chatty' },
-          ].map((pref) => (
-            <label key={pref.key} className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 cursor-pointer hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-700">
-              <input type="checkbox" {...register(pref.name)} className="h-4 w-4 rounded text-primary-500" />
-              <span className="text-sm text-slate-700 dark:text-slate-300">{pref.label}</span>
-            </label>
-          ))}
+          <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 cursor-pointer hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-700">
+            <input type="checkbox" {...register('smokingAllowed')} className="h-4 w-4 rounded text-primary-500" />
+            <span className="text-sm text-slate-700 dark:text-slate-300">🚬 Smoking Allowed</span>
+          </label>
+          <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 cursor-pointer hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-700">
+            <input type="checkbox" {...register('sameGenderOnly')} className="h-4 w-4 rounded text-primary-500" />
+            <span className="text-sm text-slate-700 dark:text-slate-300">👤 Same Gender Only</span>
+          </label>
         </div>
       </div>
 

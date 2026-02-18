@@ -14,10 +14,8 @@ async function bootstrap(): Promise<void> {
     await connectDatabase();
     logger.info('MongoDB connected');
 
-    // Seed demo data if empty
-    if (env.NODE_ENV !== 'production') {
-      await seedDatabase();
-    }
+    // Seed demo data if database is empty (safe — seedDatabase checks first)
+    await seedDatabase();
 
     // Create HTTP server
     const server = http.createServer(app);

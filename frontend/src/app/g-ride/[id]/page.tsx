@@ -38,14 +38,11 @@ export default function RideDetailPage() {
   }, [id, fetchRideById]);
 
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      router.push('/login');
-      return;
-    }
-    if (!authLoading && isAuthenticated) {
+    // Allow viewing ride details without auth — only load the ride
+    if (!authLoading) {
       loadRide();
     }
-  }, [authLoading, isAuthenticated, router, loadRide]);
+  }, [authLoading, loadRide]);
 
   const handleJoinRequest = async (pickupLocation?: { lat: number; lng: number; address: string }) => {
     if (!id) return;
@@ -121,14 +118,14 @@ export default function RideDetailPage() {
 
   if (!ride) return null;
 
-  const isDriver = user?._id === (typeof ride.driver === 'string' ? ride.driver : ride.driver._id);
-  const isPassenger = ride.passengers?.some(
-    (p) => (typeof p.user === 'string' ? p.user : p.user._id) === user?._id
+  const isDriver = isAuthenticated && user?._id === (typeof ride.creator === 'string' ? ride.creator : ride.creator._id);
+  const isPassenger = isAuthenticated && ride.passengers?.some(
+    (p) => (typeof p.userId === 'string' ? p.userId : p.userId._id) === user?._id
   );
   const canJoin =
     !isDriver &&
     !isPassenger &&
-    ride.status === 'scheduled' &&
+    ride.status === 'active' &&
     ride.availableSeats > 0;
 
   return (
@@ -148,7 +145,16 @@ export default function RideDetailPage() {
 
         {/* Action buttons */}
         <div className="mt-6 flex flex-wrap gap-3">
-          {canJoin && (
+          {canJoin && !isAuthenticated && (
+            <button
+              className="btn-primary"
+              onClick={() => router.push('/login')}
+            >
+              🔐 Login to Join Ride
+            </button>
+          )}
+
+          {canJoin && isAuthenticated && (
             <button
               className="btn-primary"
               onClick={() => setBookingOpen(true)}
@@ -158,7 +164,7 @@ export default function RideDetailPage() {
             </button>
           )}
 
-          {isDriver && ride.status === 'scheduled' && (
+          {isDriver && ride.status === 'active' && (
             <>
               <button
                 className="btn-primary"
@@ -187,7 +193,7 @@ export default function RideDetailPage() {
             </button>
           )}
 
-          {isPassenger && ride.status === 'scheduled' && (
+          {isPassenger && ride.status === 'active' && (
             <button
               className="rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-600 disabled:opacity-50"
               onClick={handleCancel}
@@ -198,10 +204,10 @@ export default function RideDetailPage() {
           )}
 
           {/* Chat link */}
-          {ride.chatRoom && (isDriver || isPassenger) && (
+          {ride.chatRoomId && (isDriver || isPassenger) && (
             <button
               className="rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-600"
-              onClick={() => router.push(`/chat/${ride.chatRoom}`)}
+              onClick={() => router.push(`/chat/${ride.chatRoomId}`)}
             >
               💬 Open Chat
             </button>

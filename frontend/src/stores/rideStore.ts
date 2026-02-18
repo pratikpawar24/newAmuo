@@ -39,9 +39,15 @@ export const useRideStore = create<RideState>((set) => ({
     set({ isLoading: true });
     try {
       const { data } = await api.get('/rides', { params: filters });
+      const resp = data.data;
       set({
-        rides: data.data.rides,
-        pagination: data.data.pagination,
+        rides: resp.rides,
+        pagination: {
+          page: resp.page || 1,
+          limit: resp.limit || 12,
+          total: resp.total || 0,
+          pages: Math.ceil((resp.total || 0) / (resp.limit || 12)),
+        },
         isLoading: false,
       });
     } catch {

@@ -52,8 +52,14 @@ api.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError);
         Cookies.remove('accessToken');
-        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-          window.location.href = '/login';
+        // Only redirect to login if user is on a page that requires auth
+        if (typeof window !== 'undefined') {
+          const path = window.location.pathname;
+          const authRequiredPaths = ['/profile', '/chat', '/g-ride/create', '/admin'];
+          const needsAuth = authRequiredPaths.some((p) => path.startsWith(p));
+          if (needsAuth) {
+            window.location.href = '/login';
+          }
         }
         return Promise.reject(refreshError);
       } finally {

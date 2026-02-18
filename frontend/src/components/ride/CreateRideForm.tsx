@@ -13,11 +13,12 @@ import { useState } from 'react';
 
 const schema = z.object({
   departureTime: z.string().min(1, 'Required'),
-  availableSeats: z.number().min(1).max(6),
-  fare: z.number().min(1, 'Fare must be > 0'),
+  totalSeats: z.number().min(1).max(6),
+  pricePerSeat: z.number().min(1, 'Price must be > 0'),
   vehicleModel: z.string().min(1, 'Required'),
   vehicleColor: z.string().min(1, 'Required'),
   plateNumber: z.string().min(1, 'Required'),
+  fuelType: z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -31,7 +32,7 @@ export default function CreateRideForm() {
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { availableSeats: 2, fare: 50 },
+    defaultValues: { totalSeats: 2, pricePerSeat: 50 },
   });
 
   const onSubmit = async (formData: FormData) => {
@@ -40,15 +41,16 @@ export default function CreateRideForm() {
     setIsSubmitting(true);
     try {
       const ride = await createRide({
-        origin: { address: origin.address, lat: origin.lat, lng: origin.lng },
-        destination: { address: destination.address, lat: destination.lat, lng: destination.lng },
+        origin: { address: origin.address, coordinates: { lat: origin.lat, lng: origin.lng } },
+        destination: { address: destination.address, coordinates: { lat: destination.lat, lng: destination.lng } },
         departureTime: new Date(formData.departureTime).toISOString(),
-        availableSeats: formData.availableSeats,
-        fare: formData.fare,
+        totalSeats: formData.totalSeats,
+        pricePerSeat: formData.pricePerSeat,
         vehicleInfo: {
           model: formData.vehicleModel,
           color: formData.vehicleColor,
           plateNumber: formData.plateNumber,
+          fuelType: (formData.fuelType as 'petrol' | 'diesel' | 'electric' | 'hybrid') || 'petrol',
         },
       });
       toast.success('Ride created!');
@@ -85,15 +87,15 @@ export default function CreateRideForm() {
         />
         <Input
           type="number"
-          label="Available Seats"
-          error={errors.availableSeats?.message}
-          {...register('availableSeats', { valueAsNumber: true })}
+          label="Total Seats"
+          error={errors.totalSeats?.message}
+          {...register('totalSeats', { valueAsNumber: true })}
         />
         <Input
           type="number"
-          label="Fare (₹)"
-          error={errors.fare?.message}
-          {...register('fare', { valueAsNumber: true })}
+          label="Price per Seat (₹)"
+          error={errors.pricePerSeat?.message}
+          {...register('pricePerSeat', { valueAsNumber: true })}
         />
       </div>
 

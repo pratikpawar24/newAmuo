@@ -43,44 +43,34 @@ const OccupancyScatter = dynamic(
 );
 
 interface DashboardStats {
-  totalUsers: number;
-  totalRides: number;
-  activeRides: number;
-  completedRides: number;
-  totalCO2Saved: number;
-  avgGreenScore: number;
-  totalDistance: number;
-}
-
-interface DailyStat {
-  date: string;
-  rides: number;
-  users: number;
-  co2Saved: number;
-  distance: number;
+  users: { total: number; newThisMonth: number };
+  rides: { total: number; active: number; completed: number };
+  environment: { totalCO2Saved: number };
+  dailyStats: Array<Record<string, unknown>>;
 }
 
 interface UserRow {
   _id: string;
-  name: string;
+  fullName: string;
   email: string;
   role: string;
   greenScore: number;
-  totalRides: number;
+  stats?: { totalRidesCreated?: number; totalRidesBooked?: number; totalDistanceKm?: number; totalCO2SavedKg?: number };
   banned?: boolean;
   createdAt: string;
 }
 
 interface RideRow {
   _id: string;
-  driver: { name: string; email: string } | string;
+  creator: { fullName: string; email: string } | string;
   origin: { address: string };
   destination: { address: string };
   status: string;
   departureTime: string;
   totalSeats: number;
   availableSeats: number;
-  estimatedEmissions: number;
+  totalCO2Saved: number;
+  totalDistanceKm: number;
 }
 
 export default function AdminDashboardPage() {
@@ -88,7 +78,6 @@ export default function AdminDashboardPage() {
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
 
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [dailyStats, setDailyStats] = useState<DailyStat[]>([]);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [rides, setRides] = useState<RideRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -128,15 +117,13 @@ export default function AdminDashboardPage() {
   const loadDashboard = useCallback(async () => {
     setLoading(true);
     try {
-      const [statsRes, dailyRes, usersRes, ridesRes] = await Promise.all([
-        api.get('/admin/stats'),
-        api.get('/admin/stats/daily?days=30'),
+      const [dashboardRes, usersRes, ridesRes] = await Promise.all([
+        api.get('/admin/dashboard'),
         api.get('/admin/users?limit=100'),
         api.get('/admin/rides?limit=100'),
       ]);
 
-      if (statsRes.data.success) setStats(statsRes.data.data);
-      if (dailyRes.data.success) setDailyStats(dailyRes.data.data);
+      if (dashboardRes.data.success) setStats(dashboardRes.data.data);
       if (usersRes.data.success) setUsers(usersRes.data.data.users || usersRes.data.data);
       if (ridesRes.data.success) setRides(ridesRes.data.data.rides || ridesRes.data.data);
 
@@ -192,7 +179,7 @@ export default function AdminDashboardPage() {
   const handleBanUser = async (userId: string, currentlyBanned: boolean) => {
     const action = currentlyBanned ? 'unban' : 'ban';
     try {
-      await api.patch(`/admin/users/${userId}/ban`, { banned: !currentlyBanned });
+      await api.patch(`/admin/users/${userId}/ban`, { ban: !currentlyBanned });
       toast.success(`User ${action}ned successfully`);
       setUsers((prev) =>
         prev.map((u) => (u._id === userId ? { ...u, banned: !currentlyBanned } : u))
@@ -218,7 +205,7 @@ export default function AdminDashboardPage() {
 
   const filteredUsers = users.filter(
     (u) =>
-      u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
+      (u.fullName || '').toLowerCase().includes(userSearch.toLowerCase()) ||
       u.email.toLowerCase().includes(userSearch.toLowerCase())
   );
   const pagedUsers = filteredUsers.slice((userPage - 1) * pageSize, userPage * pageSize);
@@ -227,16 +214,15 @@ export default function AdminDashboardPage() {
   const pagedRides = rides.slice((ridePage - 1) * pageSize, ridePage * pageSize);
   const totalRidePages = Math.ceil(rides.length / pageSize);
 
-  const chartData = dailyStats.map((d) => ({
+  const chartData = (stats?.dailyStats || []).map((d: any) => ({
     date: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-    Rides: d.rides,
-    Users: d.users,
-    'CO₂ Saved (kg)': parseFloat((d.co2Saved / 1000).toFixed(2)),
-    'Distance (km)': parseFloat((d.distance / 1000).toFixed(1)),
+    Rides: d.totalRidesCreated || 0,
+    Users: d.totalUsers || 0,
+    'CO₂ Saved (kg)': parseFloat(((d.totalCO2SavedKg || 0) / 1000).toFixed(2)),
   }));
 
   const statusColor: Record<string, string> = {
-    scheduled: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+    active: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
     in_progress: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
     completed: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
     cancelled: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
@@ -254,7 +240,7 @@ export default function AdminDashboardPage() {
               📊 Admin Dashboard
             </h1>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Welcome back, {user?.name}
+              Welcome back, {user?.fullName || user?.email}
             </p>
           </div>
           <button
@@ -293,43 +279,43 @@ export default function AdminDashboardPage() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <StatsCard
                 title="Total Users"
-                value={stats.totalUsers.toLocaleString()}
+                value={(stats.users?.total || 0).toLocaleString()}
                 icon="👥"
                 color="emerald"
               />
               <StatsCard
                 title="Total Rides"
-                value={stats.totalRides.toLocaleString()}
+                value={(stats.rides?.total || 0).toLocaleString()}
                 icon="🚗"
                 color="blue"
               />
               <StatsCard
                 title="Active Rides"
-                value={stats.activeRides.toLocaleString()}
+                value={(stats.rides?.active || 0).toLocaleString()}
                 icon="🟢"
                 color="yellow"
               />
               <StatsCard
                 title="CO₂ Saved"
-                value={formatCO2(stats.totalCO2Saved)}
+                value={formatCO2(stats.environment?.totalCO2Saved || 0)}
                 icon="🌱"
                 color="emerald"
               />
               <StatsCard
                 title="Completed Rides"
-                value={stats.completedRides.toLocaleString()}
+                value={(stats.rides?.completed || 0).toLocaleString()}
                 icon="✅"
                 color="emerald"
               />
               <StatsCard
-                title="Avg Green Score"
-                value={stats.avgGreenScore.toFixed(1)}
-                icon="🏆"
+                title="New Users (30d)"
+                value={(stats.users?.newThisMonth || 0).toLocaleString()}
+                icon="�"
                 color="yellow"
               />
               <StatsCard
-                title="Total Distance"
-                value={`${(stats.totalDistance / 1000).toFixed(0)} km`}
+                title="Completion Rate"
+                value={stats.rides?.total ? `${((stats.rides.completed / stats.rides.total) * 100).toFixed(0)}%` : '-'}
                 icon="📏"
                 color="blue"
               />
@@ -356,9 +342,9 @@ export default function AdminDashboardPage() {
               <PeakHoursHeatmap data={peakHoursData} />
               <RideStatusPie
                 data={[
-                  { name: 'Completed', value: stats?.completedRides || 0, color: '#10b981' },
-                  { name: 'Active', value: stats?.activeRides || 0, color: '#3b82f6' },
-                  { name: 'Scheduled', value: (stats?.totalRides || 0) - (stats?.completedRides || 0) - (stats?.activeRides || 0), color: '#f59e0b' },
+                  { name: 'Completed', value: stats?.rides?.completed || 0, color: '#10b981' },
+                  { name: 'Active', value: stats?.rides?.active || 0, color: '#3b82f6' },
+                  { name: 'Other', value: (stats?.rides?.total || 0) - (stats?.rides?.completed || 0) - (stats?.rides?.active || 0), color: '#f59e0b' },
                 ]}
               />
             </div>
@@ -373,8 +359,8 @@ export default function AdminDashboardPage() {
                 data={rides.slice(0, 50).map((r) => ({
                   rideId: r._id,
                   occupancy: (r.totalSeats || 4) - r.availableSeats,
-                  emissions: r.estimatedEmissions || Math.random() * 5,
-                  distance: Math.random() * 50 + 5,
+                  emissions: r.totalCO2Saved || Math.random() * 5,
+                  distance: r.totalDistanceKm || Math.random() * 50 + 5,
                 }))}
               />
             </div>
@@ -419,7 +405,7 @@ export default function AdminDashboardPage() {
                   {pagedUsers.map((u) => (
                     <tr key={u._id} className={`hover:bg-slate-50 dark:hover:bg-slate-700/50 ${u.banned ? 'opacity-50 bg-red-50 dark:bg-red-900/10' : ''}`}>
                       <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
-                        {u.name}
+                        {u.fullName}
                         {u.banned && <span className="ml-2 text-xs text-red-500">🚫 Banned</span>}
                       </td>
                       <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{u.email}</td>
@@ -437,7 +423,7 @@ export default function AdminDashboardPage() {
                       <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
                         {u.greenScore?.toFixed(1) ?? '-'}
                       </td>
-                      <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{u.totalRides ?? 0}</td>
+                      <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{(u.stats?.totalRidesCreated || 0) + (u.stats?.totalRidesBooked || 0)}</td>
                       <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
                         {formatDate(u.createdAt)}
                       </td>
@@ -520,7 +506,7 @@ export default function AdminDashboardPage() {
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                   {pagedRides.map((r) => {
                     const driverName =
-                      typeof r.driver === 'string' ? r.driver : r.driver?.name ?? 'Unknown';
+                      typeof r.creator === 'string' ? r.creator : (r.creator as any)?.fullName ?? 'Unknown';
                     return (
                       <tr key={r._id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
                         <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
@@ -545,7 +531,7 @@ export default function AdminDashboardPage() {
                           {r.availableSeats}/{r.totalSeats}
                         </td>
                         <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
-                          {r.estimatedEmissions?.toFixed(0) ?? '-'}
+                          {r.totalCO2Saved?.toFixed(0) ?? '-'}
                         </td>
                         <td className="px-4 py-3 text-right">
                           <button
@@ -595,7 +581,7 @@ export default function AdminDashboardPage() {
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>
                 <p className="text-slate-500">Name</p>
-                <p className="font-medium text-slate-900 dark:text-white">{selectedUser.name}</p>
+                <p className="font-medium text-slate-900 dark:text-white">{selectedUser.fullName}</p>
               </div>
               <div>
                 <p className="text-slate-500">Email</p>
@@ -611,7 +597,7 @@ export default function AdminDashboardPage() {
               </div>
               <div>
                 <p className="text-slate-500">Total Rides</p>
-                <p className="font-medium text-slate-900 dark:text-white">{selectedUser.totalRides ?? 0}</p>
+                <p className="font-medium text-slate-900 dark:text-white">{(selectedUser.stats?.totalRidesCreated || 0) + (selectedUser.stats?.totalRidesBooked || 0)}</p>
               </div>
               <div>
                 <p className="text-slate-500">Joined</p>

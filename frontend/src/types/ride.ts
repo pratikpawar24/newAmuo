@@ -1,55 +1,59 @@
 export interface GeoPoint {
   address: string;
-  coordinates: [number, number]; // [lng, lat]
+  coordinates: { lat: number; lng: number };
+  placeId?: string;
 }
 
 export interface Passenger {
-  user: string | { _id: string; name: string; avatar?: string };
-  status: 'pending' | 'accepted' | 'rejected';
+  userId: string | { _id: string; fullName: string; avatarUrl?: string };
+  pickup?: { address: string; coordinates: { lat: number; lng: number } };
+  dropoff?: { address: string; coordinates: { lat: number; lng: number } };
+  status: 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'completed';
+  co2SavedKg?: number;
+  fare?: number;
   bookedAt: string;
 }
 
 export interface VehicleInfo {
+  make?: string;
   model: string;
   color: string;
   plateNumber: string;
-}
-
-export interface RideEmissions {
-  total: number;
-  perPassenger: number;
-  saved: number;
-  treeDaysEquivalent: number;
+  fuelType?: 'petrol' | 'diesel' | 'electric' | 'hybrid';
 }
 
 export interface Ride {
   _id: string;
-  driver: string | { _id: string; name: string; avatar?: string; greenScore?: number };
+  creator: string | { _id: string; fullName: string; avatarUrl?: string; greenScore?: number; badges?: string[] };
   origin: GeoPoint;
   destination: GeoPoint;
-  waypoints?: GeoPoint[];
+  waypoints?: Array<{ lat: number; lng: number; type: 'pickup' | 'dropoff' }>;
+  routePolyline?: number[][];
   departureTime: string;
-  availableSeats: number;
+  estimatedArrival?: string;
+  totalDistanceKm?: number;
+  estimatedDurationMin?: number;
+  pricePerSeat: number;
+  currency?: string;
   totalSeats?: number;
-  fare: number;
-  status: 'pending' | 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
+  availableSeats: number;
   passengers: Passenger[];
-  chatRoomId: string;
-  chatRoom?: string;
+  status: 'active' | 'in_progress' | 'completed' | 'cancelled';
   vehicleInfo?: VehicleInfo;
-  distanceKm?: number;
-  estimatedDuration?: number;
-  emissions?: RideEmissions;
+  co2PerKm?: number;
+  totalCO2Saved?: number;
+  matchScore?: number;
+  chatRoomId: string;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface CreateRidePayload {
-  origin: { address: string; lat: number; lng: number };
-  destination: { address: string; lat: number; lng: number };
+  origin: { address: string; coordinates: { lat: number; lng: number } };
+  destination: { address: string; coordinates: { lat: number; lng: number } };
   departureTime: string;
-  availableSeats: number;
-  fare: number;
+  totalSeats?: number;
+  pricePerSeat?: number;
   vehicleInfo?: VehicleInfo;
 }
 

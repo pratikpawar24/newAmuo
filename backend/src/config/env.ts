@@ -15,7 +15,7 @@ const envSchema = z.object({
   
   // External Services
   AI_SERVICE_URL: z.string().default('http://localhost:8000'),
-  OSRM_URL: z.string().default('http://localhost:5001'),
+  OSRM_URL: z.string().default('https://router.project-osrm.org'),
   
   // Email Configuration
   SMTP_HOST: z.string().default('smtp.gmail.com'),
