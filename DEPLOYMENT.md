@@ -13,40 +13,67 @@ Complete guide to deploy AUMO v2 across multiple platforms.
                                ▼
                         ┌─────────────────┐
                         │    MongoDB      │
-                        │   (Filess.io)   │
+                        │    (Atlas)      │
                         └─────────────────┘
 ```
 
 ---
 
-## Step 1: Database Setup (Filess.io)
+## Step 1: Database Setup (MongoDB Atlas)
 
 ### 1.1 Create Account
-1. Go to [https://panel.filess.io/](https://panel.filess.io/)
-2. Create a free account
+1. Go to [https://www.mongodb.com/cloud/atlas](https://www.mongodb.com/cloud/atlas)
+2. Click **"Try Free"** and create an account
 3. Verify your email
 
-### 1.2 Create MongoDB Database
-1. Click **"Create Database"**
-2. Select **MongoDB** as the database type
-3. Choose a region closest to your users
-4. Set database name: `aumo`
-5. Create a username and strong password
+### 1.2 Create a New Cluster
+1. After login, click **"Build a Database"**
+2. Choose **"M0 FREE"** tier (Shared cluster)
+3. Select your cloud provider: **AWS** (recommended)
+4. Select region closest to your users (e.g., `us-east-1` for US, `ap-south-1` for India)
+5. Cluster name: `aumo-cluster`
 6. Click **"Create"**
 
-### 1.3 Get Connection String
-1. Once created, click on your database
-2. Copy the **Connection String** (looks like):
-   ```
-   mongodb://username:password@mongodb-xxxxx.filess.io:27017/aumo
-   ```
-3. **Save this securely** - you'll need it for the backend
+### 1.3 Create Database User
+1. Go to **Security** → **Database Access**
+2. Click **"Add New Database User"**
+3. Choose **"Password"** authentication
+4. Set username: `aumo_admin`
+5. Click **"Autogenerate Secure Password"** and **save it securely**
+6. Database User Privileges: **"Read and write to any database"**
+7. Click **"Add User"**
 
 ### 1.4 Configure Network Access
-1. In Filess.io dashboard, go to **Network Access**
-2. Add these IP addresses to whitelist:
-   - `0.0.0.0/0` (Allow from anywhere) - for Render
-   - Or add Render's specific IPs if available
+1. Go to **Security** → **Network Access**
+2. Click **"Add IP Address"**
+3. Click **"Allow Access from Anywhere"** (adds `0.0.0.0/0`)
+   - This is required for Render/Vercel since they use dynamic IPs
+   - For production, you can restrict to specific IPs later
+4. Click **"Confirm"**
+
+### 1.5 Get Connection String
+1. Go to **Deployment** → **Database**
+2. Click **"Connect"** on your cluster
+3. Select **"Connect your application"**
+4. Choose **Driver**: Node.js, **Version**: 5.5 or later
+5. Copy the connection string:
+   ```
+   mongodb+srv://aumo_admin:<password>@aumo-cluster.xxxxx.mongodb.net/?retryWrites=true&w=majority&appName=aumo-cluster
+   ```
+6. **Replace `<password>`** with your actual password
+7. **Add database name** before the `?`:
+   ```
+   mongodb+srv://aumo_admin:YOUR_PASSWORD@aumo-cluster.xxxxx.mongodb.net/aumo?retryWrites=true&w=majority&appName=aumo-cluster
+   ```
+
+### 1.6 Create Database (Optional)
+1. Click **"Browse Collections"** on your cluster
+2. Click **"Add My Own Data"**
+3. Database name: `aumo`
+4. Collection name: `users`
+5. Click **"Create"**
+
+> **Note**: The database and collections will be created automatically when the backend first connects, so this step is optional.
 
 ---
 
@@ -155,7 +182,7 @@ In Render dashboard, go to **Environment** and add:
 # Required
 NODE_ENV=production
 PORT=5000
-MONGODB_URI=mongodb://username:password@mongodb-xxxxx.filess.io:27017/aumo
+MONGODB_URI=mongodb+srv://aumo_admin:YOUR_PASSWORD@aumo-cluster.xxxxx.mongodb.net/aumo?retryWrites=true&w=majority
 
 # JWT (use strong random strings!)
 JWT_SECRET=your-super-secret-jwt-key-minimum-32-characters-long
@@ -322,10 +349,15 @@ Socket connected: true
 
 ## Troubleshooting
 
-### MongoDB Connection Issues
-- Ensure IP whitelist includes `0.0.0.0/0` in Filess.io
-- Verify connection string format is correct
-- Check username/password have no special characters that need URL encoding
+### MongoDB Atlas Connection Issues
+- Ensure Network Access includes `0.0.0.0/0` (Allow from anywhere)
+- Verify connection string uses `mongodb+srv://` format
+- Check username/password - URL encode special characters:
+  - `@` → `%40`
+  - `#` → `%23`
+  - `$` → `%24`
+- Ensure database name is included in the connection string (before `?`)
+- Check cluster status is "Active" in Atlas dashboard
 
 ### CORS Errors
 - Ensure all origins are listed in `CORS_ORIGIN`
@@ -362,7 +394,7 @@ Socket connected: true
 ### Backend (Render)
 | Variable | Example Value |
 |----------|---------------|
-| `MONGODB_URI` | `mongodb://user:pass@host:port/db` |
+| `MONGODB_URI` | `mongodb+srv://user:pass@cluster.mongodb.net/aumo` |
 | `JWT_SECRET` | `your-32-char-secret` |
 | `JWT_REFRESH_SECRET` | `your-32-char-secret` |
 | `AI_SERVICE_URL` | `https://user-aumo-ai.hf.space` |
@@ -385,10 +417,10 @@ Socket connected: true
 | Vercel | 100GB bandwidth/month | From $20/month |
 | Render | 750 hours/month, sleeps | From $7/month |
 | Hugging Face | CPU Basic, public only | From $9/month |
-| Filess.io | 512MB storage | From $5/month |
+| MongoDB Atlas | M0 Free (512MB, shared) | M10 from $57/month |
 
 **Total Free Tier**: $0/month (with limitations)
-**Recommended Production**: ~$40-50/month
+**Recommended Production**: ~$100/month (with dedicated DB)
 
 ---
 
@@ -411,4 +443,36 @@ Socket connected: true
 2. Configure custom domain with SSL
 3. Set up error tracking (Sentry, LogRocket)
 4. Configure CI/CD pipeline for automatic deployments
-5. Set up database backups in Filess.io
+5. Set up database backups in MongoDB Atlas
+6. Configure Atlas alerts for performance monitoring
+7. Enable Atlas Search for ride search functionality (optional)
+8. Set up Atlas Charts for analytics dashboard (optional)
+
+---
+
+## MongoDB Atlas Tips
+
+### Enable Performance Advisor
+1. Go to your cluster → **Performance Advisor**
+2. Review suggested indexes
+3. Create recommended indexes for better query performance
+
+### Set Up Alerts
+1. Go to **Project** → **Alerts**
+2. Create alerts for:
+   - Connections > 80% of limit
+   - Disk usage > 80%
+   - Replication lag > 60 seconds
+
+### Enable Backup (Paid tiers)
+1. Go to cluster → **Backup**
+2. Enable continuous backup
+3. Configure snapshot schedule
+
+### Monitor Performance
+1. Go to cluster → **Metrics**
+2. Monitor:
+   - Connections
+   - Operations/second
+   - Query targeting
+   - Index usage
