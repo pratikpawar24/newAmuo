@@ -80,7 +80,10 @@ class SyntheticDataConfig:
 
 
 # Environment variables with defaults for local and production
-OSRM_URL = os.getenv("OSRM_URL", "http://localhost:5001")
+# OSRM URL: Use public server for production, localhost for development
+# Public OSRM: https://router.project-osrm.org (free, rate-limited)
+# Local OSRM: http://localhost:5001 (requires Docker setup)
+OSRM_URL = os.getenv("OSRM_URL", "https://router.project-osrm.org")
 MODEL_PATH = os.getenv("MODEL_PATH", "saved_models/traffic_lstm.pt")
 API_KEY = os.getenv("API_KEY", "aumo-ai-api-key-change-in-production")
 
