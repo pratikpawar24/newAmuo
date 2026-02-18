@@ -43,15 +43,24 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const { data } = await axios.post(`${API_URL}/api/auth/refresh`, {}, { withCredentials: true });
+        const refreshToken = Cookies.get('refreshToken');
+        const { data } = await axios.post(
+          `${API_URL}/api/auth/refresh`,
+          { refreshToken: refreshToken || '' },
+          { withCredentials: true }
+        );
         if (data?.data?.accessToken) {
           Cookies.set('accessToken', data.data.accessToken, { expires: 1 / 96 }); // 15 min
+        }
+        if (data?.data?.refreshToken) {
+          Cookies.set('refreshToken', data.data.refreshToken, { expires: 7 }); // 7 days
         }
         processQueue(null);
         return api(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError);
         Cookies.remove('accessToken');
+        Cookies.remove('refreshToken');
         // Only redirect to login if user is on a page that requires auth
         if (typeof window !== 'undefined') {
           const path = window.location.pathname;

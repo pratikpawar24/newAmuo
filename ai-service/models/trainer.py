@@ -103,7 +103,7 @@ def train_model(
 
     # Scheduler: ReduceLROnPlateau(patience=5, factor=0.5)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", patience=cfg.lr_patience, factor=cfg.lr_factor, verbose=True
+        optimizer, mode="min", patience=cfg.lr_patience, factor=cfg.lr_factor
     )
 
     # Training loop

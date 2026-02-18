@@ -23,7 +23,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   login: async (payload) => {
     const { data } = await api.post('/auth/login', payload);
     if (data.data?.accessToken) {
-      Cookies.set('accessToken', data.data.accessToken, { expires: 1 / 96 });
+      Cookies.set('accessToken', data.data.accessToken, { expires: 1 / 96 }); // 15 min
+    }
+    if (data.data?.refreshToken) {
+      Cookies.set('refreshToken', data.data.refreshToken, { expires: 7 }); // 7 days
     }
     const u = data.data.user;
     const user = { ...u, name: u.name || u.fullName, avatar: u.avatar || u.avatarUrl };
@@ -37,6 +40,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (data.data?.accessToken) {
       Cookies.set('accessToken', data.data.accessToken, { expires: 1 / 96 });
     }
+    if (data.data?.refreshToken) {
+      Cookies.set('refreshToken', data.data.refreshToken, { expires: 7 });
+    }
     const u = data.data.user;
     const user = { ...u, name: u.name || u.fullName, avatar: u.avatar || u.avatarUrl };
     set({ user, isAuthenticated: true, isLoading: false });
@@ -47,6 +53,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   logout: async () => {
     try { await api.post('/auth/logout'); } catch { /* ignore */ }
     Cookies.remove('accessToken');
+    Cookies.remove('refreshToken');
     disconnectSocket();
     set({ user: null, isAuthenticated: false, isLoading: false });
   },

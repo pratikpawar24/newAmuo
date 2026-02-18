@@ -18,8 +18,8 @@ const loginSchema = z.object({
 });
 
 const IS_PROD = process.env.NODE_ENV === 'production';
-const COOKIE_OPTS_ACCESS = { httpOnly: true, secure: IS_PROD, maxAge: 15 * 60 * 1000, sameSite: (IS_PROD ? 'none' : 'lax') as 'none' | 'lax' };
-const COOKIE_OPTS_REFRESH = { httpOnly: true, secure: IS_PROD, maxAge: 7 * 24 * 60 * 60 * 1000, sameSite: (IS_PROD ? 'none' : 'lax') as 'none' | 'lax' };
+const COOKIE_OPTS_ACCESS = { httpOnly: true, secure: IS_PROD, maxAge: 15 * 60 * 1000, sameSite: (IS_PROD ? 'none' : 'lax') as 'none' | 'lax', path: '/' };
+const COOKIE_OPTS_REFRESH = { httpOnly: true, secure: IS_PROD, maxAge: 7 * 24 * 60 * 60 * 1000, sameSite: (IS_PROD ? 'none' : 'lax') as 'none' | 'lax', path: '/' };
 
 export async function register(req: Request, res: Response): Promise<void> {
   try {
@@ -150,8 +150,8 @@ export async function logout(req: Request, res: Response): Promise<void> {
     if (token && req.user) {
       await User.findByIdAndUpdate(req.user.userId, { $pull: { refreshTokens: token } });
     }
-    res.clearCookie('accessToken');
-    res.clearCookie('refreshToken');
+    res.clearCookie('accessToken', { path: '/' });
+    res.clearCookie('refreshToken', { path: '/' });
     res.json({ success: true, message: 'Logged out' });
   } catch {
     res.json({ success: true, message: 'Logged out' });
