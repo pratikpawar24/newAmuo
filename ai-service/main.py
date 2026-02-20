@@ -59,24 +59,33 @@ async def lifespan(app: FastAPI):
     print("AUMO v2 AI Service Starting...")
     print("=" * 60)
 
-    # 1. Check if model exists, if not train it
-    if os.path.exists(MODEL_PATH):
-        print(f"[Startup] Loading existing model from {MODEL_PATH}")
+    # 1. Load or train model in background to avoid blocking startup
+    async def init_model():
+        global model, scaler, model_metrics
         try:
-            model, scaler = load_model(MODEL_PATH)
-            model_metrics = {"status": "loaded", "path": MODEL_PATH}
+            if os.path.exists(MODEL_PATH):
+                print(f"[Startup] Loading existing model from {MODEL_PATH}")
+                try:
+                    model, scaler = load_model(MODEL_PATH)
+                    model_metrics = {"status": "loaded", "path": MODEL_PATH}
+                except Exception as e:
+                    print(f"[Startup] Failed to load model: {e}, retraining...")
+                    m, metrics = await asyncio.to_thread(train_model)
+                    model = m
+                    scaler = metrics["scaler"]
+                    model_metrics = metrics
+            else:
+                print("[Startup] No saved model found, training from scratch...")
+                m, metrics = await asyncio.to_thread(train_model)
+                model = m
+                scaler = metrics["scaler"]
+                model_metrics = metrics
+            print(f"[Startup] Model ready. Metrics: {model_metrics}")
         except Exception as e:
-            print(f"[Startup] Failed to load model: {e}, retraining...")
-            model, metrics = train_model()
-            scaler = metrics["scaler"]
-            model_metrics = metrics
-    else:
-        print("[Startup] No saved model found, training from scratch...")
-        model, metrics = train_model()
-        scaler = metrics["scaler"]
-        model_metrics = metrics
+            print(f"[Startup] Model init failed: {e}")
+            model_metrics = {"status": "error", "error": str(e)}
 
-    print(f"[Startup] Model ready. Metrics: {model_metrics}")
+    asyncio.create_task(init_model())
 
     # 2. Build road graph
     print("[Startup] Building road network graph...")
