@@ -2,87 +2,12 @@ import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { Ride } from '../models/Ride';
 import { User } from '../models/User';
-import { haversine, haversineKm } from '../utils/haversine';
+import { haversineKm } from '../utils/haversine';
 import { emissionFactor } from '../utils/emissions';
 import { updateUserGreenScore, addActiveDay } from '../services/greenScore.service';
 import { createNotification } from '../services/notification.service';
 import { matchRides as aiMatchRides } from '../services/ai.service';
 import { logger } from '../utils/logger';
-
-// ── Route overlap helpers ─────────────────────────────────────────────────────
-
-/** Find the minimum distance (metres) from a point to any point on a polyline */
-function pointToPolylineMinDist(lat: number, lng: number, polyline: number[][]): number {
-  let min = Infinity;
-  for (const p of polyline) {
-    const d = haversine(lat, lng, p[0], p[1]);
-    if (d < min) min = d;
-  }
-  return min;
-}
-
-/** Check if a rider's origin→dest falls along a driver's polyline.
- *  Returns { onRoute, pickupDistM, dropoffDistM, overlapRatio, detourKm, co2SavedKg, sharedDistKm }
- */
-function checkRouteOverlap(
-  riderOriginLat: number, riderOriginLng: number,
-  riderDestLat: number, riderDestLng: number,
-  driverPolyline: number[][],
-  maxProximityM = 3000, // 3 km threshold
-): {
-  onRoute: boolean;
-  pickupDistM: number;
-  dropoffDistM: number;
-  overlapRatio: number;
-  sharedDistKm: number;
-  detourKm: number;
-  co2SavedKg: number;
-} {
-  if (!driverPolyline || driverPolyline.length < 2) {
-    return { onRoute: false, pickupDistM: Infinity, dropoffDistM: Infinity, overlapRatio: 0, sharedDistKm: 0, detourKm: 0, co2SavedKg: 0 };
-  }
-
-  const pickupDistM = pointToPolylineMinDist(riderOriginLat, riderOriginLng, driverPolyline);
-  const dropoffDistM = pointToPolylineMinDist(riderDestLat, riderDestLng, driverPolyline);
-
-  // Both pickup and dropoff must be within proximity threshold
-  if (pickupDistM > maxProximityM || dropoffDistM > maxProximityM) {
-    return { onRoute: false, pickupDistM, dropoffDistM, overlapRatio: 0, sharedDistKm: 0, detourKm: 0, co2SavedKg: 0 };
-  }
-
-  // Find projection indices (ensure pickup comes before dropoff = same direction)
-  let pickupIdx = 0, dropoffIdx = 0;
-  let minPickup = Infinity, minDropoff = Infinity;
-  for (let i = 0; i < driverPolyline.length; i++) {
-    const dp = haversine(riderOriginLat, riderOriginLng, driverPolyline[i][0], driverPolyline[i][1]);
-    const dd = haversine(riderDestLat, riderDestLng, driverPolyline[i][0], driverPolyline[i][1]);
-    if (dp < minPickup) { minPickup = dp; pickupIdx = i; }
-    if (dd < minDropoff) { minDropoff = dd; dropoffIdx = i; }
-  }
-
-  // Pickup must come before dropoff along the route (same direction)
-  if (pickupIdx >= dropoffIdx) {
-    return { onRoute: false, pickupDistM, dropoffDistM, overlapRatio: 0, sharedDistKm: 0, detourKm: 0, co2SavedKg: 0 };
-  }
-
-  // Calculate total route length and shared segment length
-  let totalLen = 0, sharedLen = 0;
-  for (let i = 0; i < driverPolyline.length - 1; i++) {
-    const seg = haversine(driverPolyline[i][0], driverPolyline[i][1], driverPolyline[i + 1][0], driverPolyline[i + 1][1]);
-    totalLen += seg;
-    if (i >= pickupIdx && i < dropoffIdx) sharedLen += seg;
-  }
-
-  const overlapRatio = totalLen > 0 ? sharedLen / totalLen : 0;
-  const sharedDistKm = sharedLen / 1000;
-  const detourKm = (pickupDistM + dropoffDistM) / 1000;
-  const avgSpeed = 30;
-  const co2Solo = sharedDistKm * emissionFactor(avgSpeed, 'petrol') / 1000;
-  const co2Shared = co2Solo / 2; // sharing with driver
-  const co2SavedKg = Math.max(co2Solo - co2Shared, 0);
-
-  return { onRoute: true, pickupDistM, dropoffDistM, overlapRatio, sharedDistKm, detourKm, co2SavedKg };
-}
 
 export async function createRide(req: Request, res: Response): Promise<void> {
   try {
@@ -146,30 +71,11 @@ export async function listRides(req: Request, res: Response): Promise<void> {
       .populate('creator', 'fullName avatarUrl greenScore badges')
       .sort({ departureTime: 1 })
       .skip(skip)
-      .limit(parseInt(limit as string) * 3) // fetch more to filter later
+      .limit(parseInt(limit as string))
       .lean();
 
-    const hasRouteFilter = originLat && originLng && destLat && destLng;
-
-    if (hasRouteFilter) {
-      // Smart route-based filtering: show rides where user's origin→dest falls on the ride's route
-      const oLat = parseFloat(originLat as string);
-      const oLng = parseFloat(originLng as string);
-      const dLat = parseFloat(destLat as string);
-      const dLng = parseFloat(destLng as string);
-      const maxProx = (parseFloat(radius as string) || 3) * 1000; // km → m
-
-      const enriched = rides
-        .map((ride) => {
-          const overlap = checkRouteOverlap(oLat, oLng, dLat, dLng, ride.routePolyline || [], maxProx);
-          return { ...ride, routeMatch: overlap };
-        })
-        .filter((r) => r.routeMatch.onRoute)
-        .sort((a, b) => b.routeMatch.overlapRatio - a.routeMatch.overlapRatio);
-
-      rides = enriched.slice(0, parseInt(limit as string));
-    } else if (originLat && originLng) {
-      // Fallback: simple origin radius filter
+    // Geo filter if origin provided
+    if (originLat && originLng) {
       const r = parseFloat(radius as string) || 10;
       rides = rides.filter((ride) => {
         const d = haversineKm(
@@ -178,9 +84,6 @@ export async function listRides(req: Request, res: Response): Promise<void> {
         );
         return d <= r;
       });
-      rides = rides.slice(0, parseInt(limit as string));
-    } else {
-      rides = rides.slice(0, parseInt(limit as string));
     }
 
     const total = await Ride.countDocuments(filter);

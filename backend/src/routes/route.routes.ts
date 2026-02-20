@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getRoute, getMultiRoute, ecoCompare, getParetoRoutesHandler, replanRouteHandler } from '../controllers/route.controller';
+import { getRoute, getMultiRoute, ecoCompare } from '../controllers/route.controller';
 
 const router = Router();
 
@@ -7,9 +7,5 @@ const router = Router();
 router.post('/calculate', getRoute);
 router.post('/eco-compare', ecoCompare);
 router.post('/multi', getMultiRoute);
-
-// AUMO-ORION endpoints
-router.post('/pareto', getParetoRoutesHandler);
-router.post('/replan', replanRouteHandler);
 
 export default router;

@@ -1,9 +1,0 @@
-__pycache__/
-*.pyc
-.env
-datasets/*.npy
-saved_models/*.pt
-*.egg-info/
-dist/
-build/
-.venv/

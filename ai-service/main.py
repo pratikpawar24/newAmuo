@@ -2,22 +2,18 @@
 AUMO v2 AI Microservice — FastAPI Application.
 
 Endpoints:
-  POST /api/predict-traffic           — LSTM model inference
-  POST /api/predict-traffic-advanced  — ST-GAT / LSTM inference with confidence
-  POST /api/route                     — AUMO-ORION time-dependent A* routing
-  POST /api/route/pareto              — Pareto-optimal route set (fastest/greenest/balanced/smoothest)
-  POST /api/route/replan              — MPC re-planning with anti-oscillation
-  POST /api/match                     — DBSCAN + scoring carpool matching
-  POST /api/emissions                 — COPERT emission calculator
-  GET  /api/health                    — health check
-  POST /api/train                     — trigger LSTM retraining
-  POST /api/train-stgat               — trigger ST-GAT iterative training
+  POST /api/predict-traffic  — LSTM model inference
+  POST /api/route            — Time-dependent A* routing
+  POST /api/match            — DBSCAN + scoring carpool matching
+  POST /api/emissions        — COPERT emission calculator
+  GET  /api/health           — health check
+  POST /api/train            — trigger model retraining
 
 ON STARTUP:
-  1. Load LSTM model (train if no checkpoint)
-  2. Load ST-GAT model (if checkpoint exists)
-  3. Build road graph from OSM Overpass API
-  4. Preprocess Contraction Hierarchies on graph
+  1. Check if saved_models/traffic_lstm.pt exists
+  2. If not: generate synthetic data, train model, save weights
+  3. Load model into memory
+  4. Log "AI Service ready" with model accuracy metrics
 """
 
 import os
@@ -36,23 +32,7 @@ from config import MODEL_PATH, API_KEY, model_config, routing_config
 from models.lstm_model import TrafficLSTM
 from models.trainer import train_model, load_model
 from models.data_generator import generate_sinusoidal_time_features
-
-# ST-GAT spatio-temporal model
-from models.st_gat_model import SpatioTemporalGAT
-from models.st_gat_trainer import (
-    iterative_train_st_gat,
-    load_st_gat_model,
-    ST_GAT_MODEL_PATH,
-)
-
 from algorithms.astar import astar_route, get_traffic_overlay
-from algorithms.orion import (
-    orion_route,
-    compute_pareto_routes,
-    ContractionHierarchy,
-    ReplanningEngine,
-    extended_edge_cost,
-)
 from algorithms.graph_builder import build_graph, find_nearest_node, build_synthetic_graph
 from algorithms.matching import match_rides, dbscan_cluster_pickups
 from algorithms.emissions import (
@@ -65,13 +45,8 @@ from utils.osrm_client import get_route as osrm_get_route, decode_osrm_geometry
 
 # Global state
 model: Optional[TrafficLSTM] = None
-st_gat_model: Optional[SpatioTemporalGAT] = None
-st_gat_scaler: Optional[dict] = None
-st_gat_adj = None
 scaler: Optional[dict] = None
 road_graph = None
-contraction_hierarchy: Optional[ContractionHierarchy] = None
-replan_engines: Dict[str, ReplanningEngine] = {}  # ride_id → engine
 model_metrics: dict = {}
 
 
@@ -79,45 +54,31 @@ model_metrics: dict = {}
 async def lifespan(app: FastAPI):
     """Startup and shutdown logic."""
     global model, scaler, road_graph, model_metrics
-    global st_gat_model, st_gat_scaler, st_gat_adj, contraction_hierarchy
 
     print("=" * 60)
-    print("AUMO v2 AI Service Starting (AUMO-ORION Engine)")
+    print("AUMO v2 AI Service Starting...")
     print("=" * 60)
 
-    # 1. Load/train LSTM model (fallback, fast startup)
+    # 1. Check if model exists, if not train it
     if os.path.exists(MODEL_PATH):
-        print(f"[Startup] Loading existing LSTM model from {MODEL_PATH}")
+        print(f"[Startup] Loading existing model from {MODEL_PATH}")
         try:
             model, scaler = load_model(MODEL_PATH)
             model_metrics = {"status": "loaded", "path": MODEL_PATH}
         except Exception as e:
-            print(f"[Startup] Failed to load LSTM model: {e}, retraining...")
+            print(f"[Startup] Failed to load model: {e}, retraining...")
             model, metrics = train_model()
             scaler = metrics["scaler"]
             model_metrics = metrics
     else:
-        print("[Startup] No saved LSTM model found, training from scratch...")
+        print("[Startup] No saved model found, training from scratch...")
         model, metrics = train_model()
         scaler = metrics["scaler"]
         model_metrics = metrics
 
-    print(f"[Startup] LSTM Model ready. Metrics: {model_metrics}")
+    print(f"[Startup] Model ready. Metrics: {model_metrics}")
 
-    # 2. Load/train ST-GAT model (advanced spatio-temporal)
-    if os.path.exists(ST_GAT_MODEL_PATH):
-        print(f"[Startup] Loading existing ST-GAT model from {ST_GAT_MODEL_PATH}")
-        try:
-            st_gat_model, st_gat_scaler, st_gat_adj = load_st_gat_model(ST_GAT_MODEL_PATH)
-            model_metrics["st_gat"] = "loaded"
-        except Exception as e:
-            print(f"[Startup] ST-GAT load failed: {e}, will train in background")
-            model_metrics["st_gat"] = "not_available"
-    else:
-        print("[Startup] No ST-GAT model found. Training will be triggered via /api/train-stgat")
-        model_metrics["st_gat"] = "not_available"
-
-    # 3. Build road graph
+    # 2. Build road graph
     print("[Startup] Building road network graph...")
     try:
         from config import graph_config
@@ -129,23 +90,8 @@ async def lifespan(app: FastAPI):
         road_graph = build_synthetic_graph(graph_config.osm_bbox)
 
     print(f"[Startup] Road graph ready: {road_graph.number_of_nodes()} nodes, {road_graph.number_of_edges()} edges")
-
-    # 4. Preprocess Contraction Hierarchies for fast routing
-    try:
-        contraction_hierarchy = ContractionHierarchy(road_graph)
-        contraction_hierarchy.preprocess(max_nodes=3000)
-        model_metrics["contraction_hierarchies"] = "ready"
-    except Exception as e:
-        print(f"[Startup] CH preprocessing failed: {e}")
-        contraction_hierarchy = None
-        model_metrics["contraction_hierarchies"] = "unavailable"
-
     print("=" * 60)
-    print("AUMO-ORION AI Service ready ✓")
-    print(f"  LSTM: {model_metrics.get('status', 'ready')}")
-    print(f"  ST-GAT: {model_metrics.get('st_gat', 'not_available')}")
-    print(f"  Graph: {road_graph.number_of_nodes()} nodes, {road_graph.number_of_edges()} edges")
-    print(f"  CH: {model_metrics.get('contraction_hierarchies', 'unavailable')}")
+    print("AI Service ready ✓")
     print("=" * 60)
 
     yield
@@ -291,12 +237,9 @@ async def health_check():
     """Health check endpoint."""
     return {
         "status": "healthy",
-        "engine": "AUMO-ORION",
         "model_loaded": model is not None,
-        "st_gat_loaded": st_gat_model is not None,
         "graph_nodes": road_graph.number_of_nodes() if road_graph else 0,
         "graph_edges": road_graph.number_of_edges() if road_graph else 0,
-        "contraction_hierarchies": contraction_hierarchy is not None and contraction_hierarchy.is_preprocessed,
         "metrics": model_metrics,
     }
 
@@ -405,14 +348,12 @@ async def predict_traffic(request: PredictTrafficRequest):
 
 @app.post("/api/route", response_model=RouteResponse)
 async def calculate_route(request: RouteRequest):
-    """Calculate eco-weighted route using AUMO-ORION algorithm.
+    """Calculate eco-weighted route using time-dependent A*.
 
-    Pipeline:
-        1. Get ST-GAT / LSTM traffic predictions for relevant segments
-        2. Run AUMO-ORION: Time-Dependent A* with multi-objective cost
-           and Contraction Hierarchies
-        3. Get OSRM route as fallback/comparison
-        4. Return primary (ORION) + alternative (OSRM) routes
+    1. Build/load graph from OSM (cache in memory)
+    2. Get traffic predictions for relevant segments
+    3. Run time-dependent A* with multi-objective cost
+    4. Also get OSRM route as fallback/comparison
     """
     global road_graph
 
@@ -431,17 +372,8 @@ async def calculate_route(request: RouteRequest):
     if start_node is None or goal_node is None:
         raise HTTPException(status_code=404, detail="Origin or destination not reachable in road network")
 
-    # ── Get AI traffic predictions ────────────────────────────
-    traffic_preds = None
-    if st_gat_model is not None:
-        # Use ST-GAT for spatio-temporal predictions
-        traffic_preds = await _get_stgat_predictions(departure)
-    elif model is not None:
-        # Fallback to LSTM predictions
-        traffic_preds = await _get_lstm_predictions(departure)
-
-    # ── Run AUMO-ORION routing ────────────────────────────────
-    primary_result = orion_route(
+    # Run A* routing
+    primary_result = astar_route(
         road_graph,
         start_node,
         goal_node,
@@ -449,22 +381,7 @@ async def calculate_route(request: RouteRequest):
         alpha=request.weights.alpha,
         beta=request.weights.beta,
         gamma=request.weights.gamma,
-        traffic_predictions=traffic_preds,
-        ch=contraction_hierarchy,
     )
-
-    # Fallback to classic A* if ORION fails
-    if primary_result is None:
-        primary_result = astar_route(
-            road_graph,
-            start_node,
-            goal_node,
-            departure,
-            alpha=request.weights.alpha,
-            beta=request.weights.beta,
-            gamma=request.weights.gamma,
-            traffic_predictions=traffic_preds,
-        )
 
     primary = None
     traffic_overlay = []
@@ -478,7 +395,7 @@ async def calculate_route(request: RouteRequest):
             cost=round(primary_result["cost"], 4),
         )
         traffic_overlay = get_traffic_overlay(
-            road_graph, primary_result["path_nodes"], traffic_preds, departure
+            road_graph, primary_result["path_nodes"], None, departure
         )
 
     # Get OSRM alternative route
@@ -534,163 +451,6 @@ async def calculate_route(request: RouteRequest):
         alternative=alternative,
         trafficOverlay=traffic_overlay,
     )
-
-
-async def _get_stgat_predictions(departure: datetime) -> Dict[str, Dict]:
-    """Generate traffic predictions using ST-GAT model for all graph edges.
-
-    Uses the trained ST-GAT model to predict speed, flow, congestion
-    for each road segment at the given departure time.
-    """
-    if st_gat_model is None or st_gat_scaler is None:
-        return {}
-
-    import torch
-
-    hour = departure.hour + departure.minute / 60.0
-    day_of_week = departure.weekday()
-    device = next(st_gat_model.parameters()).device
-
-    try:
-        num_nodes = st_gat_adj.shape[0] if st_gat_adj is not None else 50
-        lookback = model_config.lookback
-
-        # Build input sequence: (1, T, N, F)
-        feature_seq = np.zeros((lookback, num_nodes, 10), dtype=np.float32)
-
-        for step in range(lookback):
-            t_offset = (lookback - 1 - step) * 5 / 60.0
-            t_hour = (hour - t_offset) % 24.0
-
-            h_sin, h_cos, d_sin, d_cos = generate_sinusoidal_time_features(t_hour, day_of_week)
-
-            for i in range(num_nodes):
-                # Base traffic estimation
-                base_flow, base_speed = 40.0, 45.0
-                if 7 <= t_hour < 9 or 17 <= t_hour < 19:
-                    base_flow, base_speed = 75.0, 25.0
-                elif 9 <= t_hour < 17:
-                    base_flow, base_speed = 50.0, 35.0
-                elif t_hour < 5 or t_hour >= 22:
-                    base_flow, base_speed = 15.0, 55.0
-
-                density = base_flow / max(base_speed, 1.0)
-                feature_seq[step, i] = [
-                    base_flow, base_speed, density,
-                    h_sin, h_cos, d_sin, d_cos,
-                    0.0, 0.0, 0.0,
-                ]
-
-        # Normalize
-        x_min = np.array(st_gat_scaler["x_min"])
-        x_max = np.array(st_gat_scaler["x_max"])
-        x_range = x_max - x_min
-        x_range[x_range == 0] = 1.0
-        input_norm = (feature_seq - x_min) / x_range
-
-        input_tensor = torch.FloatTensor(input_norm).unsqueeze(0).to(device)  # (1, T, N, F)
-        adj_tensor = torch.FloatTensor(st_gat_adj).to(device)
-
-        with torch.no_grad():
-            preds, attn = st_gat_model(input_tensor, adj_tensor)
-
-        # De-normalize predictions: (1, N, H, 3) → speed, flow, congestion
-        preds_np = preds.cpu().numpy()[0]  # (N, H, 3)
-        y_min = np.array(st_gat_scaler["y_min"])
-        y_max = np.array(st_gat_scaler["y_max"])
-        y_range = y_max - y_min
-        y_range[y_range == 0] = 1.0
-        preds_denorm = preds_np * y_range + y_min
-
-        # Map predictions to edge keys
-        predictions = {}
-        graph_nodes = list(road_graph.nodes())
-        for i, node in enumerate(graph_nodes[:num_nodes]):
-            for neighbor in road_graph.successors(node):
-                edge_key = f"{node}-{neighbor}"
-                # Use first forecast step
-                node_idx = i % num_nodes
-                pred_speed = float(max(5.0, preds_denorm[node_idx, 0, 0]))
-                pred_flow = float(max(0.0, preds_denorm[node_idx, 0, 1]))
-                pred_congestion = float(np.clip(preds_denorm[node_idx, 0, 2], 0, 1))
-
-                predictions[edge_key] = {
-                    "speed": pred_speed,
-                    "flow": pred_flow,
-                    "congestion": pred_congestion,
-                }
-
-        return predictions
-
-    except Exception as e:
-        print(f"[ST-GAT Predict] Error: {e}")
-        return {}
-
-
-async def _get_lstm_predictions(departure: datetime) -> Dict[str, Dict]:
-    """Fallback: Generate traffic predictions using LSTM model."""
-    if model is None:
-        return {}
-
-    hour = departure.hour + departure.minute / 60.0
-    day_of_week = departure.weekday()
-    device = next(model.parameters()).device
-
-    predictions = {}
-
-    try:
-        for node in list(road_graph.nodes())[:100]:
-            for neighbor in road_graph.successors(node):
-                edge_key = f"{node}-{neighbor}"
-
-                feature_seq = []
-                for step in range(model_config.lookback):
-                    t_offset = (model_config.lookback - 1 - step) * 5 / 60.0
-                    t_hour = (hour - t_offset) % 24.0
-                    h_sin, h_cos, d_sin, d_cos = generate_sinusoidal_time_features(t_hour, day_of_week)
-
-                    base_flow, base_speed = 40.0, 45.0
-                    if 7 <= t_hour < 9 or 17 <= t_hour < 19:
-                        base_flow, base_speed = 75.0, 25.0
-                    elif 9 <= t_hour < 17:
-                        base_flow, base_speed = 50.0, 35.0
-                    elif t_hour < 5 or t_hour >= 22:
-                        base_flow, base_speed = 15.0, 55.0
-
-                    density = base_flow / max(base_speed, 1.0)
-                    feature_seq.append([base_flow, base_speed, density,
-                                        h_sin, h_cos, d_sin, d_cos, 0.0, 0.0, 0.0])
-
-                input_arr = np.array([feature_seq], dtype=np.float32)
-                if scaler:
-                    x_min = np.array(scaler["x_min"])
-                    x_max = np.array(scaler["x_max"])
-                    x_range = x_max - x_min
-                    x_range[x_range == 0] = 1.0
-                    input_arr = (input_arr - x_min) / x_range
-
-                input_tensor = torch.FloatTensor(input_arr).to(device)
-                with torch.no_grad():
-                    pred, _ = model(input_tensor)
-
-                pred_np = pred.cpu().numpy()[0]
-                if scaler:
-                    y_min = np.array(scaler["y_min"])
-                    y_max = np.array(scaler["y_max"])
-                    y_range = y_max - y_min
-                    y_range[y_range == 0] = 1.0
-                    pred_np = pred_np * y_range + y_min
-
-                predictions[edge_key] = {
-                    "speed": float(max(5.0, pred_np[0][0])),
-                    "flow": float(max(0.0, pred_np[0][1])),
-                    "congestion": float(np.clip(pred_np[0][2], 0, 1)),
-                }
-
-    except Exception as e:
-        print(f"[LSTM Predict] Error: {e}")
-
-    return predictions
 
 
 @app.post("/api/match", response_model=MatchResponse)
@@ -770,7 +530,7 @@ async def calculate_emissions(request: EmissionRequest):
 
 @app.post("/api/train")
 async def retrain_model(x_api_key: str = Header(None)):
-    """Trigger LSTM model retraining (admin only, secured with API key)."""
+    """Trigger model retraining (admin only, secured with API key)."""
     if x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
@@ -783,262 +543,6 @@ async def retrain_model(x_api_key: str = Header(None)):
         return {"status": "success", "metrics": {k: v for k, v in metrics.items() if k != "scaler"}}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Training failed: {str(e)}")
-
-
-# ── AUMO-ORION Advanced Endpoints ───────────────────────────────────
-
-class ParetoRequest(BaseModel):
-    origin: Coordinate
-    destination: Coordinate
-    departureTime: str
-
-
-class ReplanRequest(BaseModel):
-    rideId: str
-    currentPosition: Coordinate
-    destination: Coordinate
-    departureTime: str
-    weights: RouteWeights = RouteWeights()
-    trafficChangePct: float = 0.0
-    isOffRoute: bool = False
-    incidentOnRoute: bool = False
-
-
-class PredictRequest(BaseModel):
-    segments: List[SegmentInput]
-    timestamp: str
-    useStGat: bool = True
-
-
-@app.post("/api/route/pareto")
-async def pareto_routes(request: ParetoRequest):
-    """Compute Pareto-optimal route set.
-
-    Returns multiple non-dominated routes optimizing different objectives:
-        - Fastest: minimize travel time
-        - Greenest: minimize CO₂ emissions
-        - Balanced: multi-objective compromise
-        - Smoothest: minimize congestion exposure
-    """
-    if road_graph is None:
-        raise HTTPException(status_code=503, detail="Road graph not loaded")
-
-    try:
-        departure = datetime.fromisoformat(request.departureTime.replace("Z", "+00:00"))
-    except (ValueError, AttributeError):
-        departure = datetime.now()
-
-    start_node = find_nearest_node(road_graph, request.origin.lat, request.origin.lng)
-    goal_node = find_nearest_node(road_graph, request.destination.lat, request.destination.lng)
-
-    if start_node is None or goal_node is None:
-        raise HTTPException(status_code=404, detail="Origin or destination not reachable")
-
-    # Get traffic predictions
-    traffic_preds = None
-    if st_gat_model is not None:
-        traffic_preds = await _get_stgat_predictions(departure)
-    elif model is not None:
-        traffic_preds = await _get_lstm_predictions(departure)
-
-    routes = compute_pareto_routes(
-        road_graph, start_node, goal_node, departure,
-        traffic_predictions=traffic_preds,
-        ch=contraction_hierarchy,
-    )
-
-    return {
-        "success": True,
-        "routes": routes,
-        "count": len(routes),
-        "departure": departure.isoformat(),
-    }
-
-
-@app.post("/api/route/replan")
-async def replan_route(request: ReplanRequest):
-    """Re-plan route using Model Predictive Control.
-
-    Anti-oscillation: Only accepts new route if it's >15% better.
-    Triggered by: periodic timer, traffic change, off-route, incident.
-    """
-    if road_graph is None:
-        raise HTTPException(status_code=503, detail="Road graph not loaded")
-
-    try:
-        departure = datetime.fromisoformat(request.departureTime.replace("Z", "+00:00"))
-    except (ValueError, AttributeError):
-        departure = datetime.now()
-
-    # Get or create re-planning engine for this ride
-    if request.rideId not in replan_engines:
-        replan_engines[request.rideId] = ReplanningEngine()
-
-    engine = replan_engines[request.rideId]
-
-    current_node = find_nearest_node(
-        road_graph, request.currentPosition.lat, request.currentPosition.lng
-    )
-    goal_node = find_nearest_node(
-        road_graph, request.destination.lat, request.destination.lng
-    )
-
-    if current_node is None or goal_node is None:
-        raise HTTPException(status_code=404, detail="Position not reachable")
-
-    # Check if re-planning is needed
-    should_replan = engine.should_replan(
-        departure,
-        (request.currentPosition.lat, request.currentPosition.lng),
-        request.trafficChangePct,
-        request.isOffRoute,
-        request.incidentOnRoute,
-    )
-
-    if not should_replan:
-        return {
-            "success": True,
-            "replanned": False,
-            "reason": "Current route is still optimal",
-            "status": engine.get_status(),
-        }
-
-    # Get traffic predictions
-    traffic_preds = None
-    if st_gat_model is not None:
-        traffic_preds = await _get_stgat_predictions(departure)
-
-    new_route = engine.replan(
-        road_graph, current_node, goal_node, departure,
-        weights={
-            "alpha": request.weights.alpha,
-            "beta": request.weights.beta,
-            "gamma": request.weights.gamma,
-        },
-        traffic_predictions=traffic_preds,
-        ch=contraction_hierarchy,
-    )
-
-    if new_route is None:
-        return {
-            "success": True,
-            "replanned": False,
-            "reason": "New route not significantly better (hysteresis threshold)",
-            "status": engine.get_status(),
-        }
-
-    return {
-        "success": True,
-        "replanned": True,
-        "route": new_route,
-        "status": engine.get_status(),
-    }
-
-
-@app.post("/api/train-stgat")
-async def train_stgat_model(x_api_key: str = Header(None)):
-    """Train/retrain the ST-GAT spatio-temporal model.
-
-    Runs iterative training (up to 3 rounds) targeting MAPE < 12%.
-    This is a long-running operation (5-30 minutes).
-    """
-    if x_api_key != API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-
-    global st_gat_model, st_gat_scaler, st_gat_adj, model_metrics
-
-    try:
-        st_gat_model, metrics = iterative_train_st_gat(
-            max_rounds=3,
-            target_mape=12.0,
-        )
-        st_gat_scaler = metrics["scaler"]
-
-        # Load adjacency from saved model
-        import torch
-        checkpoint = torch.load(ST_GAT_MODEL_PATH, map_location="cpu", weights_only=False)
-        st_gat_adj = np.array(checkpoint["adj"], dtype=np.float32)
-
-        model_metrics["st_gat"] = "trained"
-        model_metrics["st_gat_metrics"] = {
-            k: v for k, v in metrics.items()
-            if k not in ("scaler", "config")
-        }
-
-        return {
-            "status": "success",
-            "metrics": model_metrics["st_gat_metrics"],
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"ST-GAT training failed: {str(e)}")
-
-
-@app.post("/api/predict-traffic-advanced")
-async def predict_traffic_advanced(request: PredictRequest):
-    """Advanced traffic prediction using ST-GAT model.
-
-    Falls back to LSTM if ST-GAT is not available.
-    Returns per-segment predictions with confidence scores.
-    """
-    try:
-        ts = datetime.fromisoformat(request.timestamp.replace("Z", "+00:00"))
-    except (ValueError, AttributeError):
-        ts = datetime.now()
-
-    if request.useStGat and st_gat_model is not None:
-        preds = await _get_stgat_predictions(ts)
-        model_used = "ST-GAT"
-    elif model is not None:
-        preds = await _get_lstm_predictions(ts)
-        model_used = "LSTM"
-    else:
-        raise HTTPException(status_code=503, detail="No prediction model available")
-
-    # Map predictions to requested segments
-    results = []
-    for seg in request.segments:
-        # Find nearest edge prediction
-        best_pred = None
-        best_dist = float("inf")
-
-        for edge_key, pred in preds.items():
-            # Use first node of edge key as approximate position
-            parts = edge_key.split("-")
-            if len(parts) == 2:
-                try:
-                    node_id = int(parts[0])
-                    if node_id in road_graph.nodes:
-                        node_data = road_graph.nodes[node_id]
-                        dist = haversine_km_simple(
-                            seg.lat, seg.lng,
-                            node_data["lat"], node_data["lng"],
-                        )
-                        if dist < best_dist:
-                            best_dist = dist
-                            best_pred = pred
-                except (ValueError, KeyError):
-                    continue
-
-        if best_pred:
-            results.append({
-                "segmentId": seg.segmentId,
-                "speed": round(best_pred["speed"], 2),
-                "flow": round(best_pred["flow"], 2),
-                "congestion": round(best_pred["congestion"], 4),
-                "confidence": round(max(0.5, 1.0 - best_dist / 5.0), 4),
-                "model": model_used,
-            })
-        else:
-            results.append({
-                "segmentId": seg.segmentId,
-                "speed": 35.0,
-                "flow": 40.0,
-                "congestion": 0.3,
-                "confidence": 0.1,
-                "model": "fallback",
-            })
-
-    return {"predictions": results, "model": model_used}
 
 
 def haversine_km_simple(lat1: float, lng1: float, lat2: float, lng2: float) -> float:

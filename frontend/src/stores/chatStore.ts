@@ -64,8 +64,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((state) => ({
       messages: [...state.messages, message],
       rooms: state.rooms.map((r) =>
-        r.roomId === message.chatRoomId
-          ? { ...r, lastMessage: message, unreadCount: r.roomId === state.activeRoom ? 0 : r.unreadCount + 1 }
+        r.chatRoomId === message.chatRoomId
+          ? { ...r, lastMessage: message, unreadCount: r.chatRoomId === state.activeRoom ? 0 : r.unreadCount + 1 }
           : r
       ),
     }));
@@ -86,7 +86,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   markRoomRead: (chatRoomId) => {
     set((state) => ({
       rooms: state.rooms.map((r) =>
-        r.roomId === chatRoomId ? { ...r, unreadCount: 0 } : r
+        r.chatRoomId === chatRoomId ? { ...r, unreadCount: 0 } : r
       ),
     }));
   },

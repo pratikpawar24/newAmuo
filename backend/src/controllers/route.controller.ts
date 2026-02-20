@@ -1,6 +1,33 @@
 import { Request, Response } from 'express';
-import { calculateRoute, getParetoRoutes, replanRoute } from '../services/ai.service';
+import { calculateRoute } from '../services/ai.service';
 import { logger } from '../utils/logger';
+
+/**
+ * Transform AI service response (camelCase + polyline) to frontend format (snake_case + path).
+ * AI returns: { primary: { polyline: [[lat,lng],...], distanceKm, durationMin, co2Grams, cost } }
+ * Frontend expects: { path: [{lat, lng},...], distance_km, duration_min, emissions_g, cost }
+ */
+function normalizeRoute(aiResult: any): any {
+  if (!aiResult) return null;
+
+  // If the result already has 'path' in snake_case, return as-is
+  if (aiResult.path && aiResult.distance_km !== undefined) return aiResult;
+
+  // Extract the primary route from AI response
+  const route = aiResult.primary || aiResult;
+
+  // Convert polyline [[lat, lng], ...] to path [{lat, lng}, ...]
+  const polyline = route.polyline || [];
+  const path = polyline.map((p: number[]) => ({ lat: p[0], lng: p[1] }));
+
+  return {
+    path,
+    distance_km: route.distanceKm ?? route.distance_km ?? 0,
+    duration_min: route.durationMin ?? route.duration_min ?? 0,
+    emissions_g: route.co2Grams ?? route.emissions_g ?? 0,
+    cost: route.cost ?? 0,
+  };
+}
 
 export async function getRoute(req: Request, res: Response): Promise<void> {
   try {
@@ -32,7 +59,13 @@ export async function getRoute(req: Request, res: Response): Promise<void> {
       routeWeights,
     );
 
-    res.json({ success: true, data: result });
+    const normalized = normalizeRoute(result);
+    if (!normalized) {
+      res.status(500).json({ success: false, error: 'No route found' });
+      return;
+    }
+
+    res.json({ success: true, data: normalized });
   } catch (error) {
     logger.error('Route calculation error:', error);
     res.status(500).json({ success: false, error: 'Failed to calculate route' });
@@ -64,7 +97,8 @@ export async function getMultiRoute(req: Request, res: Response): Promise<void> 
             depTime || new Date().toISOString(),
             { alpha: preset.alpha, beta: preset.beta, gamma: preset.gamma },
           );
-          return { name: preset.name, ...result };
+          const normalized = normalizeRoute(result);
+          return { name: preset.name, ...normalized };
         } catch {
           return { name: preset.name, error: 'Route unavailable' };
         }
@@ -103,8 +137,8 @@ export async function ecoCompare(req: Request, res: Response): Promise<void> {
     ]);
 
     const comparison = {
-      standard: standardRoute,
-      eco: ecoRoute,
+      standard: normalizeRoute(standardRoute),
+      eco: normalizeRoute(ecoRoute),
       savings: {
         timeDifferenceMin: (ecoRoute?.primary?.durationMin || 0) - (standardRoute?.primary?.durationMin || 0),
         co2SavedGrams: (standardRoute?.primary?.co2Grams || 0) - (ecoRoute?.primary?.co2Grams || 0),
@@ -119,81 +153,5 @@ export async function ecoCompare(req: Request, res: Response): Promise<void> {
   } catch (error) {
     logger.error('Eco-compare error:', error);
     res.status(500).json({ success: false, error: 'Failed to compare routes' });
-  }
-}
-
-// ── AUMO-ORION Pareto & Re-plan Controllers ─────────────────────────
-
-export async function getParetoRoutesHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const { origin, destination, departureTime } = req.body;
-
-    if (!origin || !destination || !origin.lat || !origin.lng || !destination.lat || !destination.lng) {
-      res.status(400).json({ success: false, error: 'Origin and destination with lat/lng required' });
-      return;
-    }
-
-    const result = await getParetoRoutes(
-      { lat: origin.lat, lng: origin.lng },
-      { lat: destination.lat, lng: destination.lng },
-      departureTime || new Date().toISOString(),
-    );
-
-    if (!result) {
-      res.status(503).json({ success: false, error: 'AI service unavailable' });
-      return;
-    }
-
-    res.json({ success: true, data: result });
-  } catch (error) {
-    logger.error('Pareto routes error:', error);
-    res.status(500).json({ success: false, error: 'Failed to calculate Pareto routes' });
-  }
-}
-
-export async function replanRouteHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const {
-      rideId,
-      currentPosition,
-      destination,
-      departureTime,
-      weights,
-      trafficChangePct,
-      isOffRoute,
-      incidentOnRoute,
-    } = req.body;
-
-    if (!rideId || !currentPosition || !destination) {
-      res.status(400).json({ success: false, error: 'rideId, currentPosition, and destination required' });
-      return;
-    }
-
-    const routeWeights = {
-      alpha: weights?.alpha ?? 0.5,
-      beta: weights?.beta ?? 0.3,
-      gamma: weights?.gamma ?? 0.2,
-    };
-
-    const result = await replanRoute(
-      rideId,
-      { lat: currentPosition.lat, lng: currentPosition.lng },
-      { lat: destination.lat, lng: destination.lng },
-      departureTime || new Date().toISOString(),
-      routeWeights,
-      trafficChangePct || 0,
-      isOffRoute || false,
-      incidentOnRoute || false,
-    );
-
-    if (!result) {
-      res.status(503).json({ success: false, error: 'AI service unavailable' });
-      return;
-    }
-
-    res.json({ success: true, data: result });
-  } catch (error) {
-    logger.error('Replan route error:', error);
-    res.status(500).json({ success: false, error: 'Failed to re-plan route' });
   }
 }

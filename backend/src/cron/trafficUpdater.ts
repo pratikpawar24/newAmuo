@@ -36,28 +36,20 @@ export function startTrafficUpdater(): void {
           flow: number;
           speed: number;
           density: number;
-          congestionLevel: string | number;
-        }) => {
-          // Convert string congestion level to number for MongoDB schema
-          const congestionMap: Record<string, number> = { free: 0, light: 1, moderate: 2, heavy: 3, gridlock: 4 };
-          const level = typeof pred.congestionLevel === 'number'
-            ? pred.congestionLevel
-            : congestionMap[pred.congestionLevel] ?? 2;
-
-          return {
-            insertOne: {
-              document: {
-                segmentId: pred.segmentId,
-                timestamp: new Date(),
-                flow: pred.flow,
-                speed: pred.speed,
-                density: pred.density,
-                congestionLevel: level,
-                source: 'predicted' as const,
-              },
+          congestionLevel: string;
+        }) => ({
+          insertOne: {
+            document: {
+              segmentId: pred.segmentId,
+              timestamp: new Date(),
+              flow: pred.flow,
+              speed: pred.speed,
+              density: pred.density,
+              congestionLevel: pred.congestionLevel || 'moderate',
+              source: 'predicted' as const,
             },
-          };
-        });
+          },
+        }));
 
         if (bulkOps.length > 0) {
           await TrafficData.bulkWrite(bulkOps);
@@ -95,12 +87,11 @@ async function generateSyntheticTraffic(): Promise<void> {
     const density = Math.min(1, Math.max(0, baseDensity + (Math.random() - 0.5) * 0.2));
     const flow = speed * density * 50;
 
-    // congestionLevel must be a number (0=free, 1=light, 2=moderate, 3=heavy, 4=gridlock)
-    let congestionLevel = 0;
-    if (density > 0.8) congestionLevel = 4;       // gridlock
-    else if (density > 0.6) congestionLevel = 3;  // heavy
-    else if (density > 0.4) congestionLevel = 2;  // moderate
-    else if (density > 0.2) congestionLevel = 1;  // light
+    let congestionLevel: 'free' | 'light' | 'moderate' | 'heavy' | 'gridlock' = 'free';
+    if (density > 0.8) congestionLevel = 'gridlock';
+    else if (density > 0.6) congestionLevel = 'heavy';
+    else if (density > 0.4) congestionLevel = 'moderate';
+    else if (density > 0.2) congestionLevel = 'light';
 
     return {
       insertOne: {
