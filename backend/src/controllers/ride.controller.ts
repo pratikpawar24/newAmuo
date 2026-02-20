@@ -86,6 +86,18 @@ export async function listRides(req: Request, res: Response): Promise<void> {
       });
     }
 
+    // Geo filter by destination if provided
+    if (destLat && destLng) {
+      const r = parseFloat(radius as string) || 10;
+      rides = rides.filter((ride) => {
+        const d = haversineKm(
+          parseFloat(destLat as string), parseFloat(destLng as string),
+          ride.destination.coordinates.lat, ride.destination.coordinates.lng
+        );
+        return d <= r;
+      });
+    }
+
     const total = await Ride.countDocuments(filter);
 
     res.json({ success: true, data: { rides, total, page: parseInt(page as string), limit: parseInt(limit as string) } });

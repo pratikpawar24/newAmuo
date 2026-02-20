@@ -5,6 +5,7 @@ export interface IUser extends Document {
   passwordHash: string;
   fullName: string;
   phone: string;
+  gender: 'male' | 'female' | 'other' | 'prefer_not_to_say';
   avatarUrl: string;
   role: 'user' | 'admin';
   banned: boolean;
@@ -36,6 +37,7 @@ const UserSchema = new Schema<IUser>(
     passwordHash: { type: String, required: true },
     fullName: { type: String, required: true, trim: true },
     phone: { type: String, default: '' },
+    gender: { type: String, enum: ['male', 'female', 'other', 'prefer_not_to_say'], default: 'prefer_not_to_say' },
     avatarUrl: { type: String, default: '' },
     role: { type: String, enum: ['user', 'admin'], default: 'user' },
     banned: { type: Boolean, default: false },

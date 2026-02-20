@@ -7,6 +7,7 @@ export interface User {
   avatarUrl?: string;
   avatar?: string; // alias for backward compat
   phone?: string;
+  gender?: 'male' | 'female' | 'other' | 'prefer_not_to_say';
   bio?: string;
   greenScore: number;
   badges: string[];
@@ -44,6 +45,7 @@ export interface RegisterPayload {
   email: string;
   password: string;
   phone?: string;
+  gender?: 'male' | 'female' | 'other' | 'prefer_not_to_say';
 }
 
 export interface LeaderboardEntry extends Pick<User, '_id' | 'fullName' | 'avatarUrl' | 'greenScore' | 'badges'> {

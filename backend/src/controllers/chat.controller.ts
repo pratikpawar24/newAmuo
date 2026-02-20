@@ -10,7 +10,10 @@ export async function getRooms(req: Request, res: Response): Promise<void> {
 
     const rides = await Ride.find({
       $or: [{ creator: req.user.userId }, { 'passengers.userId': req.user.userId }],
-    }).populate('creator', 'fullName avatarUrl').lean();
+    })
+      .populate('creator', 'fullName avatarUrl')
+      .populate('passengers.userId', 'fullName avatarUrl')
+      .lean();
 
     const rooms = await Promise.all(
       rides.map(async (ride) => {

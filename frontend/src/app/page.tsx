@@ -59,6 +59,17 @@ export default function HomePage() {
     setWeights(newWeights);
   }, [weights]);
 
+  // Auto-recalculate route when weights change (if origin & destination are set)
+  useEffect(() => {
+    if (origin && destination && route) {
+      const timer = setTimeout(() => {
+        calculateRoute(origin, destination, weights);
+      }, 400);
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weights]);
+
   const handleCalculate = () => {
     if (origin && destination) calculateRoute(origin, destination, weights);
   };

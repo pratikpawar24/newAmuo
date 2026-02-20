@@ -44,11 +44,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const params: Record<string, string> = { limit: '30' };
       if (cursor) params.cursor = cursor;
       const { data } = await api.get(`/chat/rooms/${chatRoomId}/messages`, { params });
+
+      // Backend returns { data: messages[] } (flat array) OR { data: { messages, hasMore, nextCursor } }
+      const raw = data.data;
+      const msgs: ChatMessage[] = Array.isArray(raw) ? raw : (raw.messages || []);
+      const hasMore = Array.isArray(raw) ? msgs.length >= 30 : !!raw.hasMore;
+      const nextCursor = Array.isArray(raw)
+        ? (msgs.length > 0 ? msgs[0].createdAt : null)
+        : (raw.nextCursor || null);
+
       const existing = cursor ? get().messages : [];
       set({
-        messages: [...data.data.messages.reverse(), ...existing],
-        hasMore: data.data.hasMore,
-        cursor: data.data.nextCursor,
+        messages: [...(cursor ? msgs : msgs), ...existing],
+        hasMore,
+        cursor: nextCursor,
         isLoading: false,
       });
     } catch {

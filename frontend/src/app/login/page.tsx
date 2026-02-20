@@ -76,12 +76,6 @@ export default function LoginPage() {
               Sign up
             </Link>
           </p>
-
-          <div className="mt-4 rounded-lg bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-700">
-            <p className="font-semibold">Demo accounts:</p>
-            <p>User: aarav@demo.com / Demo@1234</p>
-            <p>Admin: admin@aumo.io / Admin@1234</p>
-          </div>
         </div>
       </div>
     </div>

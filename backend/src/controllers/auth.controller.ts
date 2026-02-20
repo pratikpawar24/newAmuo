@@ -9,6 +9,7 @@ const registerSchema = z.object({
   fullName: z.string().min(2).max(100),
   email: z.string().email(),
   phone: z.string().optional().default(''),
+  gender: z.enum(['male', 'female', 'other', 'prefer_not_to_say']).optional().default('prefer_not_to_say'),
   password: z.string().min(6).max(100),
 });
 
@@ -29,7 +30,7 @@ export async function register(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const { fullName, email, phone, password } = parsed.data;
+    const { fullName, email, phone, gender, password } = parsed.data;
 
     const existing = await User.findOne({ email: email.toLowerCase() });
     if (existing) {
@@ -40,7 +41,7 @@ export async function register(req: Request, res: Response): Promise<void> {
     const passwordHash = await bcrypt.hash(password, 12);
     const avatarUrl = `https://www.gravatar.com/avatar/${Buffer.from(email.toLowerCase()).toString('hex')}?d=identicon`;
 
-    const user = await User.create({ fullName, email: email.toLowerCase(), phone, passwordHash, avatarUrl });
+    const user = await User.create({ fullName, email: email.toLowerCase(), phone, gender, passwordHash, avatarUrl });
 
     const payload = { userId: user._id.toString(), email: user.email, role: user.role };
     const accessToken = signAccessToken(payload);

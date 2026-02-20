@@ -14,6 +14,8 @@ import toast from 'react-hot-toast';
 const schema = z.object({
   fullName: z.string().min(2, 'Name must be at least 2 characters'),
   email: z.string().email('Invalid email'),
+  phone: z.string().min(10, 'Phone number must be at least 10 digits').max(15, 'Phone number too long').regex(/^\+?[0-9\s\-]+$/, 'Invalid phone number'),
+  gender: z.enum(['male', 'female', 'other', 'prefer_not_to_say'], { required_error: 'Please select your gender' }),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   confirmPassword: z.string(),
 }).refine((d) => d.password === d.confirmPassword, {
@@ -35,7 +37,7 @@ export default function RegisterPage() {
   const onSubmit = async (data: FormData) => {
     setIsSubmitting(true);
     try {
-      await registerUser({ fullName: data.fullName, email: data.email, password: data.password });
+      await registerUser({ fullName: data.fullName, email: data.email, password: data.password, phone: data.phone, gender: data.gender });
       toast.success('Account created!');
       router.push('/');
     } catch (error: unknown) {
@@ -58,6 +60,23 @@ export default function RegisterPage() {
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <Input label="Full Name" placeholder="John Doe" error={errors.fullName?.message} {...register('fullName')} />
             <Input label="Email" type="email" placeholder="you@example.com" error={errors.email?.message} {...register('email')} />
+            <Input label="Phone Number" type="tel" placeholder="+91 9876543210" error={errors.phone?.message} {...register('phone')} />
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Gender</label>
+              <select
+                {...register('gender')}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+              >
+                <option value="">Select gender</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+                <option value="prefer_not_to_say">Prefer not to say</option>
+              </select>
+              {errors.gender && <p className="mt-1 text-xs text-red-500">{errors.gender.message}</p>}
+            </div>
+
             <Input label="Password" type="password" placeholder="••••••••" error={errors.password?.message} {...register('password')} />
             <Input label="Confirm Password" type="password" placeholder="••••••••" error={errors.confirmPassword?.message} {...register('confirmPassword')} />
             <Button type="submit" isLoading={isSubmitting} className="w-full" size="lg">
