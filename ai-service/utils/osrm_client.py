@@ -4,6 +4,10 @@ import httpx
 from typing import List, Tuple, Optional, Dict, Any
 from config import OSRM_URL
 
+# Retry settings for the free public OSRM server
+MAX_RETRIES = 2
+TIMEOUT_SECONDS = 45.0
+
 
 async def get_route(
     origin: Tuple[float, float],
@@ -38,18 +42,32 @@ async def get_route(
         "alternatives": "true" if alternatives else "false",
     }
 
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(url, params=params)
-            response.raise_for_status()
-            return response.json()
-    except Exception as e:
-        print(f"[OSRM] Error: {e}")
-        return {
-            "code": "Error",
-            "routes": [],
-            "message": str(e),
-        }
+    last_error = None
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                data = response.json()
+                if data.get("code") == "Ok" and data.get("routes"):
+                    return data
+                # OSRM returned a non-Ok code (e.g. NoRoute)
+                print(f"[OSRM] Non-Ok response: {data.get('code')} — {data.get('message', '')}")
+                return data
+        except Exception as e:
+            last_error = e
+            if attempt < MAX_RETRIES:
+                import asyncio
+                await asyncio.sleep(0.5 * (attempt + 1))
+                print(f"[OSRM] Retry {attempt + 1}/{MAX_RETRIES} after error: {e}")
+            else:
+                print(f"[OSRM] All {MAX_RETRIES + 1} attempts failed: {e}")
+
+    return {
+        "code": "Error",
+        "routes": [],
+        "message": str(last_error),
+    }
 
 
 async def get_distance_matrix(

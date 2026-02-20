@@ -87,14 +87,17 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(init_model())
 
-    # 2. Build road graph
+    # 2. Build road graph (best-effort — OSRM is primary for routing)
     print("[Startup] Building road network graph...")
     try:
         from config import graph_config
         road_graph = await build_graph(graph_config.osm_bbox)
+        if road_graph.number_of_nodes() < 10:
+            print(f"[Startup] Graph too small ({road_graph.number_of_nodes()} nodes), using synthetic fallback")
+            road_graph = build_synthetic_graph(graph_config.osm_bbox)
     except Exception as e:
         print(f"[Startup] Could not fetch OSM data: {e}")
-        print("[Startup] Building synthetic graph as fallback...")
+        print("[Startup] Building synthetic graph as fallback (OSRM still primary for road geometry)...")
         from config import graph_config
         road_graph = build_synthetic_graph(graph_config.osm_bbox)
 
@@ -357,63 +360,30 @@ async def predict_traffic(request: PredictTrafficRequest):
 
 @app.post("/api/route", response_model=RouteResponse)
 async def calculate_route(request: RouteRequest):
-    """Calculate eco-weighted route using time-dependent A*.
+    """Calculate eco-weighted route.
 
-    1. Build/load graph from OSM (cache in memory)
-    2. Get traffic predictions for relevant segments
-    3. Run time-dependent A* with multi-objective cost
-    4. Also get OSRM route as fallback/comparison
+    Strategy:
+    1. OSRM is the PRIMARY source — always follows real roads
+    2. A* on the OSM graph provides traffic-aware metrics & eco scoring
+    3. If both fail, return an error — NEVER return a straight line
     """
     global road_graph
-
-    if road_graph is None:
-        raise HTTPException(status_code=503, detail="Road graph not loaded")
 
     try:
         departure = datetime.fromisoformat(request.departureTime.replace("Z", "+00:00"))
     except (ValueError, AttributeError):
         departure = datetime.now()
 
-    # Find nearest nodes
-    start_node = find_nearest_node(road_graph, request.origin.lat, request.origin.lng)
-    goal_node = find_nearest_node(road_graph, request.destination.lat, request.destination.lng)
-
-    if start_node is None or goal_node is None:
-        raise HTTPException(status_code=404, detail="Origin or destination not reachable in road network")
-
-    # Run A* routing
-    primary_result = astar_route(
-        road_graph,
-        start_node,
-        goal_node,
-        departure,
-        alpha=request.weights.alpha,
-        beta=request.weights.beta,
-        gamma=request.weights.gamma,
-    )
-
     primary = None
+    alternative = None
     traffic_overlay = []
 
-    if primary_result:
-        primary = RouteResult(
-            polyline=primary_result["polyline"],
-            distanceKm=round(primary_result["distanceKm"], 2),
-            durationMin=round(primary_result["durationMin"], 1),
-            co2Grams=round(primary_result["co2Grams"], 1),
-            cost=round(primary_result["cost"], 4),
-        )
-        traffic_overlay = get_traffic_overlay(
-            road_graph, primary_result["path_nodes"], None, departure
-        )
-
-    # Get OSRM alternative route
-    alternative = None
+    # ── Step 1: Get OSRM road-following route (primary) ──────
     try:
         osrm_result = await osrm_get_route(
             (request.origin.lat, request.origin.lng),
             (request.destination.lat, request.destination.lng),
-            alternatives=False,
+            alternatives=True,
         )
         if osrm_result.get("routes"):
             route = osrm_result["routes"][0]
@@ -423,36 +393,93 @@ async def calculate_route(request: RouteRequest):
             avg_speed = dist_km / (dur_min / 60.0) if dur_min > 0 else 30.0
             co2 = dist_km * emission_factor(avg_speed)
 
-            alternative = RouteResult(
+            # Apply eco-weight scoring to cost
+            t_norm = dur_min
+            e_norm = co2 / 100.0
+            d_norm = dist_km
+            cost = (request.weights.alpha * t_norm
+                    + request.weights.beta * e_norm
+                    + request.weights.gamma * d_norm)
+
+            primary = RouteResult(
                 polyline=[[p[0], p[1]] for p in polyline],
                 distanceKm=round(dist_km, 2),
                 durationMin=round(dur_min, 1),
                 co2Grams=round(co2, 1),
-                cost=0.0,
+                cost=round(cost, 4),
             )
-    except Exception as e:
-        print(f"[Route] OSRM fallback error: {e}")
 
-    # If no A* result, use OSRM as primary
-    if primary is None and alternative is not None:
-        primary = alternative
-        alternative = None
-    elif primary is None:
-        # Generate a direct line as absolute fallback
-        primary = RouteResult(
-            polyline=[
-                [request.origin.lat, request.origin.lng],
-                [request.destination.lat, request.destination.lng],
-            ],
-            distanceKm=round(
-                haversine_km_simple(
-                    request.origin.lat, request.origin.lng,
-                    request.destination.lat, request.destination.lng,
-                ), 2
-            ),
-            durationMin=0.0,
-            co2Grams=0.0,
-            cost=0.0,
+            # If OSRM returned an alternative route, use it
+            if len(osrm_result["routes"]) > 1:
+                alt_route = osrm_result["routes"][1]
+                alt_polyline = decode_osrm_geometry(alt_route["geometry"])
+                alt_dist_km = alt_route["distance"] / 1000.0
+                alt_dur_min = alt_route["duration"] / 60.0
+                alt_avg_speed = alt_dist_km / (alt_dur_min / 60.0) if alt_dur_min > 0 else 30.0
+                alt_co2 = alt_dist_km * emission_factor(alt_avg_speed)
+
+                alternative = RouteResult(
+                    polyline=[[p[0], p[1]] for p in alt_polyline],
+                    distanceKm=round(alt_dist_km, 2),
+                    durationMin=round(alt_dur_min, 1),
+                    co2Grams=round(alt_co2, 1),
+                    cost=0.0,
+                )
+    except Exception as e:
+        print(f"[Route] OSRM error: {e}")
+
+    # ── Step 2: Try A* for traffic-aware eco alternative ─────
+    if road_graph is not None and road_graph.number_of_nodes() > 0:
+        try:
+            start_node = find_nearest_node(road_graph, request.origin.lat, request.origin.lng)
+            goal_node = find_nearest_node(road_graph, request.destination.lat, request.destination.lng)
+
+            if start_node is not None and goal_node is not None:
+                astar_result = astar_route(
+                    road_graph,
+                    start_node,
+                    goal_node,
+                    departure,
+                    alpha=request.weights.alpha,
+                    beta=request.weights.beta,
+                    gamma=request.weights.gamma,
+                )
+
+                if astar_result:
+                    # If we already have an OSRM primary, use A* data to
+                    # enhance it with traffic-aware CO2 and duration estimates
+                    if primary is not None:
+                        # Overlay A* eco metrics onto the OSRM geometry
+                        primary.co2Grams = round(astar_result["co2Grams"], 1)
+                        primary.cost = round(astar_result["cost"], 4)
+                        # Blend the duration (trust OSRM distance, A* traffic)
+                        astar_dur = astar_result["durationMin"]
+                        osrm_dur = primary.durationMin
+                        primary.durationMin = round(
+                            osrm_dur * 0.6 + astar_dur * 0.4, 1
+                        )
+                    else:
+                        # No OSRM — use A* polyline as fallback
+                        primary = RouteResult(
+                            polyline=astar_result["polyline"],
+                            distanceKm=round(astar_result["distanceKm"], 2),
+                            durationMin=round(astar_result["durationMin"], 1),
+                            co2Grams=round(astar_result["co2Grams"], 1),
+                            cost=round(astar_result["cost"], 4),
+                        )
+
+                    # Build traffic overlay for the map
+                    traffic_overlay = get_traffic_overlay(
+                        road_graph, astar_result["path_nodes"], None, departure
+                    )
+        except Exception as e:
+            print(f"[Route] A* routing error: {e}")
+
+    # ── Step 3: Final check — never return an empty response ─
+    if primary is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Unable to calculate route. Both OSRM and road graph are unavailable.",
         )
 
     return RouteResponse(
