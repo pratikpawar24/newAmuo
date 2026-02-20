@@ -1,17 +1,29 @@
 'use client';
 
 import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import RideList from '@/components/ride/RideList';
 import Button from '@/components/ui/Button';
+import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { useRides } from '@/hooks/useRides';
 import { useAuth } from '@/hooks/useAuth';
 import Link from 'next/link';
 
 export default function GRidePage() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { rides, isLoading, pagination, fetchRides } = useRides(true);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push('/login');
+    }
+  }, [authLoading, isAuthenticated, router]);
+
+  if (authLoading) return <LoadingSpinner className="min-h-screen" size="lg" />;
+  if (!isAuthenticated) return null;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -22,11 +34,9 @@ export default function GRidePage() {
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white">🚗 G-Ride</h1>
             <p className="text-sm text-slate-500">Find or offer rides, save the planet</p>
           </div>
-          {isAuthenticated && (
-            <Link href="/g-ride/create">
-              <Button size="lg">+ Create Ride</Button>
-            </Link>
-          )}
+          <Link href="/g-ride/create">
+            <Button size="lg">+ Create Ride</Button>
+          </Link>
         </div>
 
         <RideList rides={rides} isLoading={isLoading} />

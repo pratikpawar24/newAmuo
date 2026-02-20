@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import api from '@/lib/api';
+import toast from 'react-hot-toast';
 import type { RouteResult } from '@/types/traffic';
 
 interface RouteWeights {
@@ -23,9 +24,15 @@ export function useMap() {
       setIsCalculating(true);
       try {
         const { data } = await api.post('/routes/calculate', { origin, destination, weights });
-        setRoute(data.data);
-        return data.data as RouteResult;
+        if (data.success && data.data?.path?.length >= 2) {
+          setRoute(data.data);
+          return data.data as RouteResult;
+        }
+        toast.error('No route found — try different locations');
+        setRoute(null);
+        return null;
       } catch {
+        toast.error('Route calculation failed — please try again');
         setRoute(null);
         return null;
       } finally {

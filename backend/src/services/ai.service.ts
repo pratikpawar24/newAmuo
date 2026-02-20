@@ -29,7 +29,11 @@ export async function calculateRoute(
     const { data } = await aiClient.post('/api/route', { origin, destination, departureTime, weights, avoidTolls });
     return data;
   } catch (error: unknown) {
-    logger.error('AI route error:', error instanceof Error ? error.message : error);
+    if (axios.isAxiosError(error) && error.response) {
+      logger.error(`AI route error (${error.response.status}):`, error.response.data?.detail || error.message);
+    } else {
+      logger.error('AI route error:', error instanceof Error ? error.message : error);
+    }
     return null;
   }
 }
